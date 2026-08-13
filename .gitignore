@@ -17,7 +17,15 @@ publish/
 secrets.json
 appsettings.Local.json
 
-# AV Matrix customer data
+# InNasc customer and global data
+*.nasc
+*.nascglobal
+*.nascclient
+*.nasc.bak
+*.nascglobal.bak
+*.nascclient.bak
+
+# Legacy AV Matrix customer data
 *.avmatrix
 *.avclient
 *.avmatrix.bak
