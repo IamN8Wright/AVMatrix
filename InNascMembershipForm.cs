@@ -2,7 +2,7 @@ namespace InNasc;
 
 internal sealed record InNascMembershipChoice(Guid CompanyId, bool Assigned, MasterUserRole Role);
 
-internal sealed class InNascCompanyMembershipRow : RoundedPanel
+internal sealed class InNascCompanyMembershipRow : Panel
 {
     private readonly CheckBox _assigned = new();
     private readonly ComboBox _role = new();
