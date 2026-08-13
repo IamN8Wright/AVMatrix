@@ -25,6 +25,8 @@ internal sealed class GoogleDriveSyncForm : Form
     private bool _forgetOperationPassword;
     private bool _busy;
     private MasterSession? _masterSession;
+    private MasterSession? _legacyDriveSession;
+    private readonly MasterSession? _companySession;
     private readonly bool _openAccountsOnShown;
     private readonly bool _connectionOnly;
 
@@ -40,10 +42,11 @@ internal sealed class GoogleDriveSyncForm : Form
         _store = store;
         _openAccountsOnShown = openAccountsOnShown;
         _connectionOnly = connectionOnly;
-        _masterSession = MasterSessionContext.Get(
+        _companySession = MasterSessionContext.Get(
             SyncTarget.GoogleDrive,
             _data.Settings.GoogleDriveFileId);
-        _filePassword = _masterSession?.MasterKey;
+        _masterSession = _companySession;
+        _filePassword = _companySession?.MasterKey;
         Text = "Google Drive online sync";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(820, 760);
@@ -362,7 +365,10 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             GoogleDriveService.Disconnect();
             MasterSessionContext.Clear(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
-            _masterSession = null;
+            _masterSession = _companySession;
+            _legacyDriveSession = null;
+            _operationPassword = null;
+            _filePassword = _companySession?.MasterKey;
             RefreshLocalState();
         }
         catch (Exception exception)
@@ -374,7 +380,9 @@ internal sealed class GoogleDriveSyncForm : Form
     private async Task LinkFileAsync()
     {
         if (_busy) return;
-        if (!_connectionOnly && MasterSessionContext.Current is not null)
+        if (!_connectionOnly &&
+            MasterSessionContext.Current is not null &&
+            InNascGlobalSessionContext.Current is null)
         {
             MessageBox.Show(this,
                 "Log out first, then connect the other Google Drive Master from the welcome screen.",
@@ -384,7 +392,6 @@ internal sealed class GoogleDriveSyncForm : Form
             return;
         }
 
-        // Capture the user's text before RunBusyAsync refreshes the form state.
         var shareLink = _shareLink.Text.Trim();
         try
         {
@@ -392,7 +399,10 @@ internal sealed class GoogleDriveSyncForm : Form
             if (!string.Equals(fileId, _data.Settings.GoogleDriveFileId, StringComparison.Ordinal))
             {
                 MasterSessionContext.Clear(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
-                _masterSession = null;
+                _masterSession = _companySession;
+                _legacyDriveSession = null;
+                _operationPassword = null;
+                _filePassword = _companySession?.MasterKey;
             }
         }
         catch (Exception exception)
@@ -440,8 +450,30 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
-            var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
-            if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
+
+            MasterSession? session;
+            if (_legacyDriveSession is not null)
+            {
+                session = RequireCompanySession();
+                if (MessageBox.Show(this,
+                        "This Google Drive company still uses the old AV Matrix account protection.\r\n\r\n" +
+                        "InNasc must migrate it to the current company key before it can be pulled. " +
+                        "The Drive data itself is preserved, old client payloads are re-keyed, and recovery copies are saved locally.\r\n\r\n" +
+                        "Migrate the Drive company now and then continue the pull?",
+                        "Migrate legacy Google Drive company",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    return;
+
+                snapshot = await MigrateLegacyDriveAsync(snapshot, session);
+            }
+            else
+            {
+                session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
+                if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
+            }
+
             var savedBy = string.IsNullOrWhiteSpace(snapshot.Contents.SavedBy)
                 ? "an earlier revision"
                 : snapshot.Contents.SavedBy;
@@ -475,17 +507,57 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
-            var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
-            if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
+
+            MasterSession? session;
+            var alreadyConfirmedPush = false;
+            if (_legacyDriveSession is not null)
+            {
+                session = RequireCompanySession();
+                var choice = MessageBox.Show(this,
+                    "This Google Drive company still uses the old AV Matrix account protection.\r\n\r\n" +
+                    "InNasc can migrate it to the current company key now. The migration keeps the Drive inventory, " +
+                    "re-keys legacy client payloads, replaces the obsolete AV Matrix account list with the users assigned " +
+                    "to this InNasc company, clears obsolete AV Matrix checkout locks, and saves local recovery copies.\r\n\r\n" +
+                    "YES  = migrate, then continue pushing this PC's current company data\r\n" +
+                    "NO   = migrate protection only; do not push local data yet\r\n" +
+                    "CANCEL = make no changes",
+                    "Migrate legacy Google Drive company",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button3);
+                if (choice == DialogResult.Cancel) return;
+
+                snapshot = await MigrateLegacyDriveAsync(snapshot, session);
+                if (choice == DialogResult.No)
+                {
+                    MessageBox.Show(this,
+                        "The Google Drive company is now protected by InNasc. Its existing Drive data was left in place.\r\n\r\n" +
+                        "You can Pull or Merge & push normally now.",
+                        "Legacy Drive migration complete",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+                alreadyConfirmedPush = true;
+            }
+            else
+            {
+                session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
+                if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
+            }
+
             var localEquipment = _data.Clients.Sum(client => client.Locations.Sum(location =>
                 location.Rooms.Sum(room => room.Equipment.Count)));
-            if (MessageBox.Show(this,
+            if (!alreadyConfirmedPush &&
+                MessageBox.Show(this,
                     $"Merge this PC's {_data.Clients.Count:N0} client(s) and " +
                     $"{localEquipment:N0} equipment record(s) into {snapshot.Metadata.Name}?\r\n\r\n" +
                     "Independent changes are combined automatically. If the same field was changed " +
                     "differently, you will be asked which value to keep.",
                     "Confirm Google Drive merge", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
-                    MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                return;
+
             GoogleDriveSyncResult result;
             try
             {
@@ -515,30 +587,124 @@ internal sealed class GoogleDriveSyncForm : Form
 
     private async Task<GoogleDriveSnapshot?> InspectWithPasswordAsync(bool prompt)
     {
-        if (!string.IsNullOrWhiteSpace(_masterSession?.MasterKey))
+        if (_legacyDriveSession is null &&
+            !string.IsNullOrWhiteSpace(_companySession?.MasterKey))
+            _filePassword = _companySession.MasterKey;
+        else if (_legacyDriveSession is null &&
+                 !string.IsNullOrWhiteSpace(_masterSession?.MasterKey))
             _filePassword = _masterSession.MasterKey;
+
         try
         {
             return await GoogleDriveSyncService.InspectAsync(_data, _filePassword);
         }
         catch (Exception exception) when (prompt &&
-            exception is PasswordRequiredException or PasswordProtectionException)
+            exception is PasswordRequiredException or PasswordProtectionException or MasterLoginRequiredException)
         {
+            var raw = await GoogleDriveService.DownloadAsync(_data.Settings);
+            if (PortableDataService.IsAccountProtected(raw.Contents))
+            {
+                var legacyAccess = PortableDataService.ReadMasterAccess(raw.Contents);
+                var legacySession = MasterSignInForm.Prompt(this, legacyAccess);
+                if (legacySession is null) return null;
+                var snapshot = await GoogleDriveSyncService.InspectAsync(
+                    _data,
+                    legacySession.MasterKey);
+                _legacyDriveSession = legacySession;
+                _operationPassword = legacySession.MasterKey;
+                _forgetOperationPassword = false;
+                _protectionState.Text =
+                    "Legacy AV Matrix account protection detected. A one-time InNasc migration is required.";
+                _protectionState.ForeColor = UiTheme.Amber;
+                return snapshot;
+            }
+
             var password = PasswordDialog.PromptForProtectedFile(this, allowRememberForSession: true);
             if (password is null) return null;
-            var snapshot = await GoogleDriveSyncService.InspectAsync(_data, password.Password);
+            var protectedSnapshot = await GoogleDriveSyncService.InspectAsync(_data, password.Password);
             _operationPassword = password.Password;
             _forgetOperationPassword = !password.RememberForSession;
             if (password.RememberForSession) _filePassword = password.Password;
             _protectionState.Text = "Password-protected JWE master. Password is held only for this app session.";
-            return snapshot;
+            return protectedSnapshot;
         }
+    }
+
+    private MasterSession RequireCompanySession()
+    {
+        var session = _companySession ??
+            MasterSessionContext.Get(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
+        if (session is null || InNascGlobalSessionContext.Current is null)
+            throw new MasterAuthorizationException(
+                "Open this company through your InNasc Global login before migrating its legacy Google Drive master.");
+        return session;
+    }
+
+    private async Task<GoogleDriveSnapshot> MigrateLegacyDriveAsync(
+        GoogleDriveSnapshot legacySnapshot,
+        MasterSession companySession)
+    {
+        var legacySession = _legacyDriveSession ??
+            throw new InvalidOperationException("The legacy AV Matrix session is no longer available.");
+
+        if (!companySession.IsOwner)
+            throw new MasterAuthorizationException(
+                "A company Owner or Global Admin must migrate legacy Google Drive protection.");
+
+        var accessForCompany = MasterAccessService.Clone(_data.MasterAccess);
+        // Keep the Drive master's identity and client-file references so existing
+        // submatrices remain discoverable after the account/key migration.
+        accessForCompany.MasterId = legacySnapshot.Contents.Data.MasterAccess.MasterId;
+        accessForCompany.Checkouts = [];
+        accessForCompany.ClientSubmatrices = legacySnapshot.Contents.Data.MasterAccess.ClientSubmatrices
+            .Select(reference => new ClientSubmatrixReference
+            {
+                ClientId = reference.ClientId,
+                GoogleDriveFileId = reference.GoogleDriveFileId,
+                FileName = reference.FileName,
+                UpdatedUtc = reference.UpdatedUtc
+            })
+            .ToList();
+
+        var migratedPayloads = await GoogleDriveSyncService.MigrateClientSubmatricesAsync(
+            _data,
+            legacySnapshot.Contents.Data,
+            _store,
+            legacySession.MasterKey,
+            companySession);
+
+        await GoogleDriveSyncService.SaveAccessControlAsync(
+            _data,
+            _store,
+            accessForCompany,
+            companySession,
+            initialSetup: false,
+            legacySession.MasterKey);
+
+        _legacyDriveSession = null;
+        _operationPassword = null;
+        _forgetOperationPassword = false;
+        _masterSession = companySession;
+        _filePassword = companySession.MasterKey;
+
+        var secured = await GoogleDriveSyncService.InspectAsync(
+            _data,
+            companySession.MasterKey);
+        ShowSnapshot(secured);
+        _details.Text =
+            $"Legacy AV Matrix Drive protection migrated to InNasc. " +
+            $"{migratedPayloads:N0} client payload(s) re-keyed.";
+        return secured;
     }
 
     private async Task<MasterSession?> EnsureMasterSessionAsync(
         GoogleDriveSnapshot snapshot,
         bool forcePrompt)
     {
+        if (_legacyDriveSession is not null)
+            throw new InvalidOperationException(
+                "Migrate this legacy Google Drive company before using account management or checkout actions.");
+
         var access = snapshot.Contents.Data.MasterAccess;
         if (!access.IsConfigured)
         {
@@ -556,7 +722,7 @@ internal sealed class GoogleDriveSyncForm : Form
             RememberMasterSession(showNotification: true);
             MessageBox.Show(this,
                 "The first Owner account was added to this Google Drive master.",
-                "company Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Company Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return _masterSession;
         }
         if (!forcePrompt && _masterSession is not null)
@@ -569,9 +735,15 @@ internal sealed class GoogleDriveSyncForm : Form
             }
             catch (MasterAuthorizationException)
             {
-                MasterSessionContext.Clear(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
-                _masterSession = null;
+                if (InNascGlobalSessionContext.Current is null)
+                    MasterSessionContext.Clear(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
+                _masterSession = _companySession;
             }
+        }
+        if (InNascGlobalSessionContext.Current is not null && _companySession is not null)
+        {
+            _masterSession = MasterAccessService.RefreshSession(access, _companySession);
+            return _masterSession;
         }
         var signedIn = MasterSignInForm.Prompt(this, access);
         if (signedIn is null) return null;
@@ -587,6 +759,15 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
+            if (_legacyDriveSession is not null)
+            {
+                MessageBox.Show(this,
+                    "This Drive company still uses legacy AV Matrix protection. Use Pull or Merge & push once to migrate it first.",
+                    "Legacy migration required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             await EnsureMasterSessionAsync(snapshot, forcePrompt: true);
         }, "The company workspace sign-in could not be completed.");
     }
@@ -598,6 +779,15 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
+            if (_legacyDriveSession is not null)
+            {
+                MessageBox.Show(this,
+                    "Migrate this legacy Drive company with Pull or Merge & push before managing its accounts.",
+                    "Legacy migration required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
             if (session is null) return;
             using var accounts = new MasterUserManagementForm(
@@ -625,6 +815,15 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
+            if (_legacyDriveSession is not null)
+            {
+                MessageBox.Show(this,
+                    "Migrate this legacy Drive company with Pull or Merge & push before checking out a client.",
+                    "Legacy migration required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
             if (session is null) return;
             MasterAccessService.RequireWrite(snapshot.Contents.Data.MasterAccess, session);
@@ -691,6 +890,15 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
+            if (_legacyDriveSession is not null)
+            {
+                MessageBox.Show(this,
+                    "Migrate this legacy Drive company with Pull or Merge & push before checking in a client.",
+                    "Legacy migration required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
             if (session is null) return;
             var clientName = _data.Clients.SingleOrDefault(client =>
@@ -727,6 +935,15 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
+            if (_legacyDriveSession is not null)
+            {
+                MessageBox.Show(this,
+                    "Migrate this legacy Drive company with Pull or Merge & push before releasing a checkout.",
+                    "Legacy migration required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
             if (session is null) return;
             await GoogleDriveSyncService.ReleaseCheckoutAsync(
@@ -774,8 +991,10 @@ internal sealed class GoogleDriveSyncForm : Form
         var masterKey = _data.Settings.GoogleDriveFileId;
         GoogleDriveSyncService.Unlink(_data, _store);
         MasterSessionContext.Clear(SyncTarget.GoogleDrive, masterKey);
-        _masterSession = null;
-        _filePassword = null;
+        _masterSession = _companySession;
+        _legacyDriveSession = null;
+        _operationPassword = null;
+        _filePassword = _companySession?.MasterKey;
         RefreshLocalState();
     }
 
@@ -829,8 +1048,12 @@ internal sealed class GoogleDriveSyncForm : Form
 
     private void ShowSnapshot(GoogleDriveSnapshot snapshot)
     {
-        _data.MasterAccess = MasterAccessService.Clone(snapshot.Contents.Data.MasterAccess);
-        GoogleDriveSyncService.EnsureBaselineIfSafe(_data, _store, snapshot);
+        if (_legacyDriveSession is null)
+        {
+            _data.MasterAccess = MasterAccessService.Clone(snapshot.Contents.Data.MasterAccess);
+            GoogleDriveSyncService.EnsureBaselineIfSafe(_data, _store, snapshot);
+        }
+
         var savedAt = snapshot.Contents.ExportedUtc == default
             ? "unknown time"
             : snapshot.Contents.ExportedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
@@ -840,11 +1063,13 @@ internal sealed class GoogleDriveSyncForm : Form
         var hasExternalChanges = GoogleDriveSyncService.HasExternalChanges(_data, snapshot);
         _data.Settings.GoogleDriveRemoteChangesDetected = hasExternalChanges;
         _store.Save(_data);
-        _fileState.Text = hasExternalChanges
-            ? "Newer file available"
-            : string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFingerprint)
-                ? "Pull required"
-                : "Up to date";
+        _fileState.Text = _legacyDriveSession is not null
+            ? "Migration required"
+            : hasExternalChanges
+                ? "Newer file available"
+                : string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFingerprint)
+                    ? "Pull required"
+                    : "Up to date";
         _fileState.ForeColor = _fileState.Text == "Up to date" ? UiTheme.Green : UiTheme.Amber;
         _details.Text =
             $"{snapshot.Metadata.Name}\r\n" +
@@ -855,11 +1080,22 @@ internal sealed class GoogleDriveSyncForm : Form
             (_data.Settings.ActiveCheckoutTarget == nameof(SyncTarget.GoogleDrive)
                 ? $"\r\nClient checkout active as {_data.Settings.ActiveCheckoutUsername}"
                 : string.Empty);
-        _protectionState.Text = snapshot.Contents.PasswordProtected
-            ? "Password-protected and encrypted as compact JWE."
-            : "This Drive master is not password protected. Use File protection before a push to protect it.";
-        _protectionState.ForeColor = snapshot.Contents.PasswordProtected ? UiTheme.Green : UiTheme.Amber;
-        _protection.Enabled = snapshot.Contents.Data.MasterAccess.ClientSubmatrices.Count == 0;
+
+        if (_legacyDriveSession is not null)
+        {
+            _protectionState.Text =
+                "Legacy AV Matrix account protection detected. Pull or Merge & push once to migrate it to InNasc.";
+            _protectionState.ForeColor = UiTheme.Amber;
+            _protection.Enabled = false;
+        }
+        else
+        {
+            _protectionState.Text = snapshot.Contents.PasswordProtected
+                ? "Password-protected and encrypted as compact JWE."
+                : "This Drive master is not password protected. Use File protection before a push to protect it.";
+            _protectionState.ForeColor = snapshot.Contents.PasswordProtected ? UiTheme.Green : UiTheme.Amber;
+            _protection.Enabled = snapshot.Contents.Data.MasterAccess.ClientSubmatrices.Count == 0;
+        }
     }
 
     private async Task RunBusyAsync(Func<Task> operation, string errorMessage)
@@ -896,10 +1132,15 @@ internal sealed class GoogleDriveSyncForm : Form
     private void RememberMasterSession(bool showNotification)
     {
         if (_masterSession is null || string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId)) return;
-        MasterSessionContext.Set(
-            SyncTarget.GoogleDrive,
-            _data.Settings.GoogleDriveFileId,
-            _masterSession);
+
+        // InNasc Global owns the canonical company session. Google Drive is only a transport
+        // for that same company and must not replace the SharedFile session in the context.
+        if (InNascGlobalSessionContext.Current is null)
+            MasterSessionContext.Set(
+                SyncTarget.GoogleDrive,
+                _data.Settings.GoogleDriveFileId,
+                _masterSession);
+
         if (showNotification) MasterSignInNotification.ShowFor(this, _masterSession);
     }
 
