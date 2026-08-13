@@ -14,6 +14,18 @@ if errorlevel 1 (
 )
 
 echo.
+echo Restoring AV Matrix Studio production branding...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Restore-BrandAssets.ps1"
+if errorlevel 1 (
+  echo.
+  echo Production branding could not be restored. Build stopped.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
 echo Building AV Matrix Studio for 64-bit Windows...
 echo.
 
@@ -42,4 +54,3 @@ echo %~dp0publish\win-x64\AVMatrixStudio.exe
 echo.
 explorer "%~dp0publish\win-x64"
 pause
-
