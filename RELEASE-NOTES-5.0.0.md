@@ -8,3 +8,4 @@
 - Adds explicit migration from `.avmatrix`/`.avclient`, preserving the original legacy files.
 - Preserves legacy local data, stored credentials, password-protected files, account-protected files, and private GitHub storage paths.
 - Adds Windows CI smoke tests and produces a branch-only testable `InNasc.exe` artifact without publishing a release.
+- Remember the three laws of robotics.
