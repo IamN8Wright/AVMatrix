@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record MasterOwnerSetupResult(
     MasterAccessControl Access,
@@ -16,7 +16,7 @@ internal sealed class MasterSignInForm : Form
     private MasterSignInForm(MasterAccessControl access)
     {
         _access = access;
-        Text = "Sign in to Master Matrix";
+        Text = "Sign in to company workspace";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -27,9 +27,9 @@ internal sealed class MasterSignInForm : Form
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
 
-        Controls.Add(Heading("Master Matrix sign in", 26, 22));
+        Controls.Add(Heading("company workspace sign in", 26, 22));
         Controls.Add(Description(
-            "Use the account created by the Master Owner. Your role controls read, write, checkout, and account-management access.",
+            "Use the account created by the company Owner. Your role controls read, write, checkout, and account-management access.",
             28, 61, 438, 44));
         Controls.Add(FieldLabel("Username", 28, 116));
         ConfigureBox(_username, 28, 138);
@@ -131,7 +131,7 @@ internal sealed class MasterOwnerSetupForm : Form
 
     private MasterOwnerSetupForm()
     {
-        Text = "Set up Master Owner";
+        Text = "Set up company Owner";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -144,7 +144,7 @@ internal sealed class MasterOwnerSetupForm : Form
 
         Controls.Add(MasterSignInForm.Heading("Create the first Owner", 26, 22));
         Controls.Add(MasterSignInForm.Description(
-            "The Owner has full access and can create Tech and Read-only accounts. Each user's password securely unlocks the same encrypted Master Matrix; passwords are never stored as readable text.",
+            "The Owner has full access and can create Tech and Read-only accounts. Each user's password securely unlocks the same encrypted company workspace; passwords are never stored as readable text.",
             28, 61, 468, 48));
         AddField("Username", _username, 116);
         AddField("Display name", _displayName, 180);
@@ -364,7 +364,7 @@ internal sealed class MasterUserManagementForm : Form
                 passwords.Value.NewPassword);
             MessageBox.Show(this,
                 "Your password will be updated when you click Save accounts.",
-                "Master access",
+                "Company access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

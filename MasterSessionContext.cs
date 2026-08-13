@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record ActiveMasterSession(
     SyncTarget Target,
@@ -82,7 +82,7 @@ internal sealed class MasterSignInNotification : Form
         Controls.Add(accent);
         Controls.Add(new Label
         {
-            Text = "SIGNED IN TO MASTER MATRIX",
+            Text = "SIGNED IN TO COMPANY",
             AutoSize = true,
             ForeColor = UiTheme.SidebarMuted,
             Font = UiTheme.Font(8, FontStyle.Bold),

@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class AppIcons
 {

@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class SharedSyncService
 {
@@ -9,7 +9,7 @@ internal static class SharedSyncService
     {
         var fullPath = ValidatePath(path);
         if (!File.Exists(fullPath))
-            throw new FileNotFoundException("The shared master file could not be found.", fullPath);
+            throw new FileNotFoundException("The company file could not be found.", fullPath);
         var contents = File.ReadAllBytes(fullPath);
         var imported = PortableDataService.ImportBytes(contents, password);
         return new SharedMasterSnapshot(
@@ -69,7 +69,7 @@ internal static class SharedSyncService
         var expectedFingerprint = data.Settings.SharedMasterFingerprint;
         if (string.IsNullOrWhiteSpace(expectedFingerprint))
             throw new SharedMasterConflictException(
-                "Pull the shared master before your first push. This prevents overwriting work already in the file.");
+                "Pull the company file before your first push. This prevents overwriting work already in the file.");
         var localForMerge = MasterCheckoutPolicy.PreserveProtectedClients(
             data, remoteData, remoteData.MasterAccess, session);
         var dataToPush = localForMerge;
@@ -161,7 +161,7 @@ internal static class SharedSyncService
     {
         var fullPath = ValidatePath(path);
         if (!File.Exists(fullPath))
-            throw new FileNotFoundException("The shared master file could not be found.", fullPath);
+            throw new FileNotFoundException("The company file could not be found.", fullPath);
         var access = PortableDataService.ReadMasterAccess(fullPath, legacyPassword);
         data.Settings.SharedMasterPath = fullPath;
         data.Settings.LastMasterTarget = nameof(SyncTarget.SharedFile);
@@ -470,7 +470,7 @@ internal static class SharedSyncService
         var directory = Path.Combine(store.DataDirectory, "SharedSyncBackups");
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory,
-            $"Before-Pull-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.avmatrix");
+            $"Before-Pull-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.nasc");
         PortableDataService.Export(path, data, password);
         return path;
     }
@@ -502,10 +502,11 @@ internal static class SharedSyncService
     private static string ValidatePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException("Link a shared master file first.");
+            throw new InvalidOperationException("Link a company file first.");
         var fullPath = Path.GetFullPath(path.Trim());
-        if (!string.Equals(Path.GetExtension(fullPath), ".avmatrix", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The shared master must use the .avmatrix extension.");
+        if (!InNascFileTypes.IsCompanyPath(fullPath))
+            throw new InvalidDataException(
+                "The company file must use .nasc. Legacy .avmatrix files remain readable for migration.");
         return fullPath;
     }
 
@@ -523,7 +524,7 @@ internal static class SharedSyncService
         var directory = Path.Combine(store.DataDirectory, "SharedSyncBackups");
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory,
-            $"{prefix}-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.avmatrix");
+            $"{prefix}-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.nasc");
         File.WriteAllBytes(path, contents);
         return path;
     }
@@ -531,7 +532,7 @@ internal static class SharedSyncService
     private static MasterFileLock AcquireLock(string masterPath)
     {
         var directory = Path.GetDirectoryName(masterPath)
-            ?? throw new InvalidOperationException("The shared master path has no parent folder.");
+            ?? throw new InvalidOperationException("The company file path has no parent folder.");
         Directory.CreateDirectory(directory);
         var lockPath = masterPath + ".sync.lock";
         try

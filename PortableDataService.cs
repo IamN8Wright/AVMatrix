@@ -2,13 +2,15 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class PortableDataService
 {
-    private const string FormatName = "AV Matrix Studio Transfer";
+    private const string FormatName = "InNasc Company";
+    private const string LegacyFormatName = "AV Matrix Studio Transfer";
     private const int CurrentFormatVersion = 4;
-    private const string AccountEnvelopeFormat = "AV Matrix Studio Account Envelope";
+    private const string AccountEnvelopeFormat = "InNasc Account Envelope";
+    private const string LegacyAccountEnvelopeFormat = "AV Matrix Studio Account Envelope";
     private const int AccountEnvelopeVersion = 1;
 
     private static readonly JsonSerializerOptions Options = new()
@@ -54,8 +56,7 @@ internal static class PortableDataService
     {
         if (string.IsNullOrWhiteSpace(session.MasterKey))
         {
-            // Legacy unencrypted masters remain usable until an Owner resets the
-            // accounts into the new account-unlocked format.
+            // Legacy unencrypted company files remain usable during migration.
             return ExportBytes(data, null, out info);
         }
 
@@ -121,8 +122,9 @@ internal static class PortableDataService
             : contents;
         var package = JsonSerializer.Deserialize<PortableDataPackage>(jsonBytes, Options)
             ?? throw new InvalidDataException("The transfer file is empty or unreadable.");
-        if (!string.Equals(package.Format, FormatName, StringComparison.Ordinal))
-            throw new InvalidDataException("This is not an AV Matrix Studio transfer file.");
+        if (!string.Equals(package.Format, FormatName, StringComparison.Ordinal) &&
+            !string.Equals(package.Format, LegacyFormatName, StringComparison.Ordinal))
+            throw new InvalidDataException("This is not a supported InNasc company or legacy AV Matrix file.");
         if (package.FormatVersion is < 1 or > CurrentFormatVersion)
             throw new InvalidDataException(
                 $"Transfer format {package.FormatVersion} is not supported by this revision.");
@@ -132,7 +134,7 @@ internal static class PortableDataService
         var data = new AppData
         {
             ProjectName = string.IsNullOrWhiteSpace(package.ProjectName)
-                ? "AV Matrix Studio"
+                ? "InNasc"
                 : package.ProjectName.Trim(),
             Clients = package.Clients,
             MasterAccess = package.MasterAccess ?? new MasterAccessControl(),
@@ -183,7 +185,8 @@ internal static class PortableDataService
         {
             var parsed = JsonSerializer.Deserialize<AccountEnvelope>(contents, Options);
             if (parsed is null ||
-                !string.Equals(parsed.Format, AccountEnvelopeFormat, StringComparison.Ordinal) ||
+                (!string.Equals(parsed.Format, AccountEnvelopeFormat, StringComparison.Ordinal) &&
+                 !string.Equals(parsed.Format, LegacyAccountEnvelopeFormat, StringComparison.Ordinal)) ||
                 parsed.FormatVersion != AccountEnvelopeVersion ||
                 string.IsNullOrWhiteSpace(parsed.PayloadBase64))
                 return false;
@@ -221,7 +224,7 @@ internal static class PortableDataService
         public DateTime ExportedUtc { get; set; }
         public string? RevisionId { get; set; }
         public string? SavedBy { get; set; }
-        public string ProjectName { get; set; } = "AV Matrix Studio";
+        public string ProjectName { get; set; } = "InNasc";
         public List<ClientRecord>? Clients { get; set; }
         public MasterAccessControl? MasterAccess { get; set; }
     }
@@ -258,7 +261,7 @@ internal sealed record PortableExportInfo(
 internal sealed class PasswordRequiredException : InvalidOperationException
 {
     public PasswordRequiredException()
-        : base("This .avmatrix file is password protected. Enter its password to continue.")
+        : base("This company file is password protected. Enter its password to continue.")
     {
     }
 }
@@ -266,7 +269,7 @@ internal sealed class PasswordRequiredException : InvalidOperationException
 internal sealed class MasterLoginRequiredException : InvalidOperationException
 {
     public MasterLoginRequiredException()
-        : base("Sign in with a Master Matrix user account to open this .avmatrix file.")
+        : base("Sign in with an InNasc account to open this protected company file.")
     {
     }
 }

@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record CheckoutRecoveryResult(
     bool Preserved,

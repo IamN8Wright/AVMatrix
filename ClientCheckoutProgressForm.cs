@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class ClientCheckoutProgressForm : Form
 {
@@ -24,8 +24,8 @@ internal sealed class ClientCheckoutProgressForm : Form
                 ? $"Checking in {clientName}"
                 : $"Checking out {clientName}";
         var detail = checkingIn
-            ? "Uploading this client's records and configuration files, updating the Master Matrix, and releasing its lock."
-            : "Locking this client in the Master Matrix and downloading its device records and configuration files.";
+            ? "Uploading this client's records and configuration files, updating the company workspace, and releasing its lock."
+            : "Locking this client in the company workspace and downloading its device records and configuration files.";
 
         Controls.Add(new Label
         {
@@ -55,7 +55,7 @@ internal sealed class ClientCheckoutProgressForm : Form
         });
         Controls.Add(new Label
         {
-            Text = "Please keep AV Matrix Studio open until this finishes.",
+            Text = "Please keep InNasc open until this finishes.",
             AutoSize = false,
             Font = UiTheme.Font(8.5f),
             ForeColor = UiTheme.Muted,

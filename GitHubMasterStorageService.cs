@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record GitHubMasterStorageOptions(
     string Owner,
@@ -49,9 +49,15 @@ internal static class GitHubMasterStorageService
         $"{CompanyRoot(options)}/company.json";
 
     public static string MasterPath(GitHubMasterStorageOptions options) =>
+        $"{CompanyRoot(options)}/master.nasc";
+
+    public static string LegacyMasterPath(GitHubMasterStorageOptions options) =>
         $"{CompanyRoot(options)}/master.avmatrix";
 
     public static string ClientPath(GitHubMasterStorageOptions options, Guid clientId) =>
+        $"{CompanyRoot(options)}/clients/{clientId:N}.nascclient";
+
+    public static string LegacyClientPath(GitHubMasterStorageOptions options, Guid clientId) =>
         $"{CompanyRoot(options)}/clients/{clientId:N}.avclient";
 
     public static void SaveAccessToken(GitHubMasterStorageOptions options, string token)
@@ -63,10 +69,13 @@ internal static class GitHubMasterStorageService
     }
 
     public static bool HasAccessToken(GitHubMasterStorageOptions options) =>
-        !string.IsNullOrWhiteSpace(WindowsCredentialStore.Read(CredentialTarget(options)));
+        !string.IsNullOrWhiteSpace(ReadAccessToken(options));
 
-    public static void ClearAccessToken(GitHubMasterStorageOptions options) =>
+    public static void ClearAccessToken(GitHubMasterStorageOptions options)
+    {
         WindowsCredentialStore.Delete(CredentialTarget(options));
+        WindowsCredentialStore.Delete(LegacyCredentialTarget(options));
+    }
 
     public static async Task TestConnectionAsync(
         GitHubMasterStorageOptions options,
@@ -82,7 +91,7 @@ internal static class GitHubMasterStorageService
         var root = document.RootElement;
         if (!root.TryGetProperty("private", out var isPrivate) || isPrivate.ValueKind != JsonValueKind.True)
             throw new InvalidOperationException(
-                "AV Matrix Master Matrix storage must use a private GitHub repository.");
+                "InNasc company storage must use a private GitHub repository.");
 
         _ = await GetHeadAsync(http, options, cancellationToken);
     }
@@ -99,13 +108,31 @@ internal static class GitHubMasterStorageService
     public static async Task<GitHubStorageFile> ReadMasterAsync(
         GitHubMasterStorageOptions options,
         CancellationToken cancellationToken = default) =>
-        await ReadFileAsync(options, MasterPath(options), cancellationToken);
+        await ReadFileWithLegacyFallbackAsync(
+            options, MasterPath(options), LegacyMasterPath(options), cancellationToken);
 
     public static async Task<GitHubStorageFile> ReadClientAsync(
         GitHubMasterStorageOptions options,
         Guid clientId,
         CancellationToken cancellationToken = default) =>
-        await ReadFileAsync(options, ClientPath(options, clientId), cancellationToken);
+        await ReadFileWithLegacyFallbackAsync(
+            options, ClientPath(options, clientId), LegacyClientPath(options, clientId), cancellationToken);
+
+    private static async Task<GitHubStorageFile> ReadFileWithLegacyFallbackAsync(
+        GitHubMasterStorageOptions options,
+        string currentPath,
+        string legacyPath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadFileAsync(options, currentPath, cancellationToken);
+        }
+        catch (FileNotFoundException)
+        {
+            return await ReadFileAsync(options, legacyPath, cancellationToken);
+        }
+    }
 
     public static async Task<GitHubStorageFile> ReadFileAsync(
         GitHubMasterStorageOptions options,
@@ -124,7 +151,7 @@ internal static class GitHubMasterStorageService
             cancellationToken);
         if (string.IsNullOrWhiteSpace(blobSha))
             throw new FileNotFoundException(
-                $"'{normalizedPath}' does not exist in the GitHub Master Matrix storage repository.");
+                $"'{normalizedPath}' does not exist in the GitHub company storage repository.");
         var bytes = await ReadBlobAsync(http, options, blobSha, cancellationToken);
         return new GitHubStorageFile(normalizedPath, bytes, blobSha, head.CommitSha);
     }
@@ -166,16 +193,22 @@ internal static class GitHubMasterStorageService
             head.TreeSha,
             MasterPath(options),
             cancellationToken);
+        existing ??= await FindBlobShaAsync(
+            http,
+            options,
+            head.TreeSha,
+            LegacyMasterPath(options),
+            cancellationToken);
         if (!string.IsNullOrWhiteSpace(existing))
             throw new InvalidOperationException(
-                $"The GitHub company folder '{options.CompanyId}' already contains a Master Matrix.");
+                $"The GitHub company folder '{options.CompanyId}' already contains a company workspace.");
 
         var metadata = JsonSerializer.SerializeToUtf8Bytes(new
         {
             schemaVersion = 1,
             companyId = ValidateCompanyId(options.CompanyId),
             displayName = displayName.Trim(),
-            masterFile = "master.avmatrix",
+            masterFile = "master.nasc",
             clientsFolder = "clients"
         }, new JsonSerializerOptions { WriteIndented = true });
 
@@ -188,7 +221,7 @@ internal static class GitHubMasterStorageService
                 [MasterPath(options)] = masterContents
             },
             head.CommitSha,
-            $"Create AV Matrix Master for {displayName.Trim()}",
+            $"Create InNasc Master for {displayName.Trim()}",
             cancellationToken);
     }
 
@@ -249,8 +282,8 @@ internal static class GitHubMasterStorageService
         if (!string.IsNullOrWhiteSpace(expectedCommitSha) &&
             !string.Equals(head.CommitSha, expectedCommitSha.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new GitHubStorageConflictException(
-                "The GitHub Master Matrix changed after this PC downloaded it. " +
-                "Refresh and run the normal AV Matrix merge before trying to push again.");
+                "The GitHub company workspace changed after this PC downloaded it. " +
+                "Refresh and run the normal InNasc merge before trying to push again.");
 
         var entries = new List<object>();
         foreach (var file in files)
@@ -290,9 +323,9 @@ internal static class GitHubMasterStorageService
         if (updateResponse.StatusCode == HttpStatusCode.UnprocessableEntity ||
             updateResponse.StatusCode == HttpStatusCode.Conflict)
             throw new GitHubStorageConflictException(
-                "Another AV Matrix user updated the GitHub Master Matrix at the same time. " +
+                "Another InNasc user updated the GitHub company workspace at the same time. " +
                 "No overwrite was forced. Refresh, merge, and try again.");
-        _ = await EnsureJsonSuccessAsync(updateResponse, "publishing the GitHub Master Matrix commit", cancellationToken);
+        _ = await EnsureJsonSuccessAsync(updateResponse, "publishing the GitHub company workspace commit", cancellationToken);
 
         return new GitHubStorageCommitResult(head.CommitSha, commitSha, treeSha);
     }
@@ -360,7 +393,7 @@ internal static class GitHubMasterStorageService
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
             throw new InvalidOperationException(
-                "The GitHub Master Matrix storage tree is too large to enumerate safely.");
+                "The GitHub company storage tree is too large to enumerate safely.");
         if (!document.RootElement.TryGetProperty("tree", out var tree) || tree.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("GitHub did not return a storage tree.");
 
@@ -385,7 +418,7 @@ internal static class GitHubMasterStorageService
         var url =
             $"https://api.github.com/repos/{Escape(options.Owner)}/{Escape(options.Repository)}/git/blobs/{Escape(blobSha)}";
         using var response = await http.GetAsync(url, cancellationToken);
-        var json = await EnsureJsonSuccessAsync(response, "downloading a GitHub Master Matrix blob", cancellationToken);
+        var json = await EnsureJsonSuccessAsync(response, "downloading a GitHub company workspace blob", cancellationToken);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var encoding = root.TryGetProperty("encoding", out var encodingValue)
@@ -473,17 +506,17 @@ internal static class GitHubMasterStorageService
 
     private static HttpClient CreateHttpClient(GitHubMasterStorageOptions options)
     {
-        var token = WindowsCredentialStore.Read(CredentialTarget(options));
+        var token = ReadAccessToken(options);
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException(
-                "GitHub Master Matrix storage is not signed in on this PC. " +
+                "GitHub company storage is not signed in on this PC. " +
                 "Add a fine-grained GitHub access token for the private storage repository.");
 
         var http = new HttpClient
         {
             Timeout = TimeSpan.FromMinutes(15)
         };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"AV-Matrix-Studio/{AppInfo.Revision}");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"InNasc/{AppInfo.Revision}");
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", ApiVersion);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
@@ -521,7 +554,20 @@ internal static class GitHubMasterStorageService
         "application/json");
 
     private static string CredentialTarget(GitHubMasterStorageOptions options) =>
+        $"InNasc/GitHubStorage/{options.Owner.Trim()}/{options.Repository.Trim()}";
+
+    private static string LegacyCredentialTarget(GitHubMasterStorageOptions options) =>
         $"AVMatrixStudio/GitHubMasterStorage/{options.Owner.Trim()}/{options.Repository.Trim()}";
+
+    private static string? ReadAccessToken(GitHubMasterStorageOptions options)
+    {
+        var token = WindowsCredentialStore.Read(CredentialTarget(options));
+        if (!string.IsNullOrWhiteSpace(token)) return token;
+        token = WindowsCredentialStore.Read(LegacyCredentialTarget(options));
+        if (!string.IsNullOrWhiteSpace(token))
+            WindowsCredentialStore.Write(CredentialTarget(options), token);
+        return token;
+    }
 
     private static void ValidateOptions(
         GitHubMasterStorageOptions options,
@@ -562,7 +608,7 @@ internal static class GitHubMasterStorageService
         if (contents.LongLength <= MaximumStoredFileBytes) return;
         throw new InvalidOperationException(
             $"'{path}' is {contents.LongLength / (1024d * 1024d):N1} MB. " +
-            $"GitHub Master Matrix storage is limited to {MaximumStoredFileBytes / (1024 * 1024)} MB per file. " +
+            $"GitHub company storage is limited to {MaximumStoredFileBytes / (1024 * 1024)} MB per file. " +
             "Use Google Drive or Local / Network Share for a client payload this large.");
     }
 

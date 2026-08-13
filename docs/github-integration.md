@@ -1,11 +1,13 @@
-# GitHub Integration
+# InNasc GitHub integration
 
-AV Matrix Studio will use GitHub for source control and release distribution. Customer Master Matrix data is stored separately in the private `IamN8Wright/AVMatrix_MasterMatrixStorage` repository.
+The `IamN8Wright/AVMatrix` repository remains the source and update origin during the InNasc 5.0 migration. Product-facing names, executable assets, and CI artifacts use `InNasc`.
 
-## Application updates
+Private company-storage repositories use:
 
-The application should query the latest GitHub Release, compare semantic versions, download the matching Windows release asset, verify its SHA-256 checksum, and then hand off installation to a separate updater process so the running executable can be safely replaced.
+- `companies/<company-id>/master.nasc`
+- `companies/<company-id>/clients/<client-id>.nascclient`
+- `companies/<company-id>/company.json`
 
-## Master Matrix transport
+Existing `master.avmatrix` and `.avclient` paths remain readable as legacy fallbacks. New writes use `.nasc` and `.nascclient`.
 
-GitHub is an optional remote provider alongside Google Drive and local/network storage. Each company is isolated under its own folder. The application should use the remote Git revision as the concurrency baseline and invoke the existing merge workflow if the remote revision changes before check-in.
+Access tokens are stored in Windows Credential Manager under the InNasc credential target. The app automatically reads and migrates the older AV Matrix credential target when present.

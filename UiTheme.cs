@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Reflection;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class UiTheme
 {
@@ -182,6 +182,10 @@ internal static class UiTheme
     {
         switch (control)
         {
+            case InNascBrandLogo logo:
+                logo.BackColor = Color.Transparent;
+                logo.RefreshVariant();
+                break;
             case N8BrandLogo logo:
                 logo.BackColor = Color.Transparent;
                 logo.RefreshVariant();

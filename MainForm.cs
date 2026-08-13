@@ -1,7 +1,9 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 public sealed class MainForm : Form
 {
+    public event EventHandler? SignOutRequested;
+
     private readonly AppData _data;
     private readonly DataStore _store;
     private readonly NetworkMonitor _networkMonitor = new();
@@ -74,7 +76,7 @@ public sealed class MainForm : Form
         _data = data;
         _store = store;
         UiTheme.SetDarkMode(_data.Settings.DarkMode);
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         WindowState = FormWindowState.Maximized;
         MinimumSize = new Size(1120, 720);
         BackColor = UiTheme.Canvas;
@@ -144,7 +146,10 @@ public sealed class MainForm : Form
         LoadNetworkAdapters();
         RefreshManufacturerFilter();
         RefreshGrid();
-        ShowMasterWelcomePage();
+        if (MasterSessionContext.Current is null)
+            ShowMasterWelcomePage();
+        else
+            ShowWelcomePage();
         RefreshSyncIndicator();
         MasterSessionContext.Changed += MasterSessionContext_Changed;
         RefreshMasterSessionUi();
@@ -175,17 +180,13 @@ public sealed class MainForm : Form
         };
 
         var brand = new Panel { Dock = DockStyle.Top, Height = 86, BackColor = UiTheme.Navy };
-        brand.Controls.Add(new PictureBox
+        brand.Controls.Add(new InNascBrandLogo(54, 54)
         {
-            Image = AppBrand.CreateLogo(),
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Color.Transparent,
-            Location = new Point(0, 14),
-            Size = new Size(54, 54)
+            Location = new Point(0, 14)
         });
         brand.Controls.Add(new Label
         {
-            Text = "AV Matrix Studio",
+            Text = "InNasc",
             AutoSize = false,
             ForeColor = Color.White,
             Font = UiTheme.Font(13, FontStyle.Bold),
@@ -196,7 +197,7 @@ public sealed class MainForm : Form
         });
         brand.Controls.Add(new Label
         {
-            Text = "Network inventory",
+            Text = "Systems in context.",
             AutoSize = false,
             ForeColor = Color.FromArgb(148, 163, 184),
             Font = UiTheme.Font(8.5f),
@@ -230,7 +231,7 @@ public sealed class MainForm : Form
         _scannerButton.Click += (_, _) => OpenIpScanner();
         _toolTip.SetToolTip(_scannerButton, "N8's IP Scanner");
 
-        _syncButton = UiTheme.SidebarIconButton(AppIcons.Sync(), "Shared master sync");
+        _syncButton = UiTheme.SidebarIconButton(AppIcons.Sync(), "Company file sync");
         _syncButton.Size = new Size(42, 40);
         _syncButton.Margin = new Padding(0, 0, 6, 0);
         _syncButton.Click += (_, _) => OpenGoogleDriveSync();
@@ -246,7 +247,7 @@ public sealed class MainForm : Form
         _aboutButton.Size = new Size(42, 40);
         _aboutButton.Margin = Padding.Empty;
         _aboutButton.Click += (_, _) => ShowAboutPage();
-        _toolTip.SetToolTip(_aboutButton, "About AV Matrix Studio");
+        _toolTip.SetToolTip(_aboutButton, "About InNasc");
 
         navigation.Controls.AddRange(
             [_homeButton, _scannerButton, _syncButton, _settingsButton, _aboutButton]);
@@ -317,7 +318,7 @@ public sealed class MainForm : Form
         _adminButton.Size = new Size(244, 36);
         _adminButton.Margin = Padding.Empty;
         _adminButton.Click += (_, _) => OpenMasterAdmin();
-        _toolTip.SetToolTip(_adminButton, "Add and manage Master Matrix users");
+        _toolTip.SetToolTip(_adminButton, "Add and manage company workspace users");
         _adminPanel.Controls.Add(_adminButton);
         _logoutButton = UiTheme.SidebarButton("Log out");
         _logoutButton.AutoSize = false;
@@ -325,7 +326,7 @@ public sealed class MainForm : Form
         _logoutButton.Size = new Size(244, 36);
         _logoutButton.Margin = Padding.Empty;
         _logoutButton.Click += async (_, _) => await LogoutAsync();
-        _toolTip.SetToolTip(_logoutButton, "Log out of this Master Matrix");
+        _toolTip.SetToolTip(_logoutButton, "Log out of this company workspace");
         _adminPanel.Controls.Add(_logoutButton);
 
         sidebar.Controls.Add(_tree);
@@ -341,7 +342,7 @@ public sealed class MainForm : Form
         var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         top.Controls.Add(new Label
         {
-            Text = "Welcome to AV Matrix Studio",
+            Text = "Welcome to InNasc",
             AutoSize = true,
             ForeColor = UiTheme.Text,
             Font = UiTheme.Font(20, FontStyle.Bold),
@@ -363,7 +364,7 @@ public sealed class MainForm : Form
         var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         top.Controls.Add(new Label
         {
-            Text = "About AV Matrix Studio",
+            Text = "About InNasc",
             AutoSize = true,
             ForeColor = UiTheme.Text,
             Font = UiTheme.Font(16, FontStyle.Bold),
@@ -1077,7 +1078,7 @@ public sealed class MainForm : Form
         _masterWelcomePage.Visible = true;
         _masterWelcomePage.BringToFront();
         RefreshWorkspaceCheckoutState();
-        _statusLabel.Text = "Choose a Master Matrix and sign in";
+        _statusLabel.Text = "Choose a company workspace and sign in";
         _signedInLabel.Visible = false;
     }
 
@@ -1085,8 +1086,8 @@ public sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Choose AV Matrix Master File",
-            Filter = "AV Matrix files (*.avmatrix)|*.avmatrix|All files (*.*)|*.*"
+            Title = "Choose InNasc Master File",
+            Filter = InNascFileTypes.CompanyFilter
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
@@ -1106,8 +1107,8 @@ public sealed class MainForm : Form
             _masterWelcomePage.SelectTarget(SyncTarget.SharedFile);
             _masterWelcomePage.SetBusy(false,
                 _legacyMasterPassword is null
-                    ? "Master selected. Enter your user account below."
-                    : "Legacy master selected. The Owner must sign in to complete the one-time migration.");
+                    ? "Company selected. Enter your user account below."
+                    : "Legacy company selected. The Owner must sign in to complete the one-time migration.");
         }
         catch (Exception exception)
         {
@@ -1127,11 +1128,11 @@ public sealed class MainForm : Form
     {
         using var dialog = new SaveFileDialog
         {
-            Title = "Create AV Matrix Master File",
-            Filter = "AV Matrix files (*.avmatrix)|*.avmatrix",
-            DefaultExt = "avmatrix",
+            Title = "Create InNasc Master File",
+            Filter = "InNasc company (*.nasc)|*.nasc",
+            DefaultExt = "nasc",
             AddExtension = true,
-            FileName = "AV-Matrix-Shared-Master.avmatrix",
+            FileName = "InNasc-Company.nasc",
             OverwritePrompt = true
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
@@ -1168,7 +1169,7 @@ public sealed class MainForm : Form
             _masterWelcomePage.ShowError("Enter both a username and password.");
             return;
         }
-        _masterWelcomePage.SetBusy(true, "Signing in and synchronizing the Master Matrix…");
+        _masterWelcomePage.SetBusy(true, "Signing in and synchronizing the company workspace…");
         try
         {
             if (_masterWelcomePage.SelectedTarget == SyncTarget.GoogleDrive)
@@ -1201,7 +1202,7 @@ public sealed class MainForm : Form
         {
             _legacyMasterPassword = LegacyMasterMigrationForm.Prompt(this);
             if (_legacyMasterPassword is null)
-                throw new OperationCanceledException("The legacy master migration was canceled.");
+                throw new OperationCanceledException("The legacy company migration was canceled.");
         }
         var access = PortableDataService.ReadMasterAccess(bytes, _legacyMasterPassword);
         var session = MasterAccessService.UsesAccountUnlock(access)
@@ -1241,13 +1242,13 @@ public sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId))
             throw new InvalidOperationException("Connect a Google Drive Master first.");
         if (!GoogleDriveService.HasGoogleSignIn)
-            throw new InvalidOperationException("Sign in with Google before opening this Master Matrix.");
+            throw new InvalidOperationException("Sign in with Google before opening this company workspace.");
         var remote = await GoogleDriveService.DownloadAsync(_data.Settings);
         if (PortableDataService.IsPasswordProtected(remote.Contents) && _legacyMasterPassword is null)
         {
             _legacyMasterPassword = LegacyMasterMigrationForm.Prompt(this);
             if (_legacyMasterPassword is null)
-                throw new OperationCanceledException("The legacy master migration was canceled.");
+                throw new OperationCanceledException("The legacy company migration was canceled.");
         }
         var access = PortableDataService.ReadMasterAccess(remote.Contents, _legacyMasterPassword);
         var accountUnlock = MasterAccessService.UsesAccountUnlock(access);
@@ -1341,7 +1342,7 @@ public sealed class MainForm : Form
         _aboutPage.BringToFront();
         _aboutTopBar.BringToFront();
         _aboutBackButton.Visible = MasterSessionContext.Current is null;
-        _statusLabel.Text = $"AV Matrix Studio revision {AppInfo.Revision}";
+        _statusLabel.Text = $"InNasc revision {AppInfo.Revision}";
     }
 
     private async Task UpdateAppAsync()
@@ -1366,7 +1367,7 @@ public sealed class MainForm : Form
         {
             MessageBox.Show(this,
                 $"The update could not be downloaded or verified.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -1381,7 +1382,7 @@ public sealed class MainForm : Form
         {
             AppUpdateService.Discard(candidate);
             MessageBox.Show(this,
-                $"AV Matrix Studio {AppInfo.Revision} is already current.\r\n\r\n" +
+                $"InNasc {AppInfo.Revision} is already current.\r\n\r\n" +
                 $"Published release: {candidate.Version}",
                 "No update needed",
                 MessageBoxButtons.OK,
@@ -1390,7 +1391,7 @@ public sealed class MainForm : Form
         }
 
         var install = MessageBox.Show(this,
-            $"AV Matrix Studio {candidate.Version} is ready to install.\r\n\r\n" +
+            $"InNasc {candidate.Version} is ready to install.\r\n\r\n" +
             $"Verified SHA-256: {candidate.Sha256[..16]}…\r\n\r\n" +
             "The app will close, keep a rollback copy, install the update, and reopen. Install now?",
             "Install verified update",
@@ -1413,7 +1414,7 @@ public sealed class MainForm : Form
             AppUpdateService.Discard(candidate);
             MessageBox.Show(this,
                 $"The update could not be started.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -1433,7 +1434,7 @@ public sealed class MainForm : Form
                 client.Id))
         {
             MessageBox.Show(this,
-                "This client is not assigned to your Master Matrix account.",
+                "This client is not assigned to your InNasc account.",
                 "Client access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -1464,7 +1465,7 @@ public sealed class MainForm : Form
         var previousDarkMode = _data.Settings.DarkMode;
         using var settings = new SettingsForm(_data, _store.DataPath);
         if (settings.ShowDialog(this) != DialogResult.OK) return;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         TrySave();
         if (previousDarkMode != _data.Settings.DarkMode)
         {
@@ -1500,14 +1501,14 @@ public sealed class MainForm : Form
         if (!sync.DataPulled) return;
 
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
         _welcomePage.RefreshClients();
         ShowWelcomePage();
         RefreshGrid();
-        _statusLabel.Text = "Synchronized the latest shared master data";
+        _statusLabel.Text = "Synchronized the latest shared company file data";
     }
 
     private void OpenGoogleDriveSync()
@@ -1518,14 +1519,14 @@ public sealed class MainForm : Form
         if (!sync.DataPulled) return;
 
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
         _welcomePage.RefreshClients();
         ShowWelcomePage();
         RefreshGrid();
-        _statusLabel.Text = "Synchronized the latest Google Drive master data";
+        _statusLabel.Text = "Synchronized the latest Google Drive company data";
     }
 
     private async void OpenMasterAdmin()
@@ -1593,13 +1594,13 @@ public sealed class MainForm : Form
             RefreshManufacturerFilter();
             RefreshGrid();
             RefreshMasterSessionUi();
-            _statusLabel.Text = "Master access updated";
+            _statusLabel.Text = "Company access updated";
         }
         catch (Exception exception)
         {
             MessageBox.Show(this,
-                $"Master access could not be updated.\r\n\r\n{exception.Message}",
-                "Master access",
+                $"Company access could not be updated.\r\n\r\n{exception.Message}",
+                "Company access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -1619,7 +1620,7 @@ public sealed class MainForm : Form
         {
             var action = _data.Settings.ActiveCheckoutClientId.HasValue
                 ? "check in and push the checked-out client"
-                : "merge this PC's changes into the Master";
+                : "merge this PC's changes into the company file";
             var choice = MessageBox.Show(this,
                 $"This PC is not synchronized. Do you want to {action} before logging out?\r\n\r\n" +
                 "Choose No to leave the local work on this PC without pushing it.",
@@ -1634,9 +1635,10 @@ public sealed class MainForm : Form
 
         TrySave(showError: false);
         MasterSessionContext.Clear();
+        InNascGlobalSessionContext.Clear();
         _legacyMasterPassword = null;
-        _masterWelcomePage.ResetForSignIn();
-        ShowMasterWelcomePage();
+        SignOutRequested?.Invoke(this, EventArgs.Empty);
+        Close();
     }
 
     private async Task<bool> SyncBeforeLogoutAsync(ActiveMasterSession active)
@@ -1657,7 +1659,7 @@ public sealed class MainForm : Form
             if (!active.Session.CanWrite)
             {
                 MessageBox.Show(this,
-                    "This Read-only account cannot merge local changes into the Master.",
+                    "This Read-only account cannot merge local changes into the company file.",
                     "Read-only access",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -1709,7 +1711,7 @@ public sealed class MainForm : Form
         catch (Exception exception)
         {
             MessageBox.Show(this,
-                $"The Master could not be synchronized, so logout was canceled.\r\n\r\n{exception.Message}",
+                $"The company file could not be synchronized, so logout was canceled.\r\n\r\n{exception.Message}",
                 "Synchronization required",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -1720,7 +1722,7 @@ public sealed class MainForm : Form
     private void RefreshAfterSharedDataChange()
     {
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
@@ -1728,7 +1730,7 @@ public sealed class MainForm : Form
         ShowWelcomePage();
         RefreshGrid();
         RefreshMasterSessionUi();
-        _statusLabel.Text = "Synchronized the latest shared master data";
+        _statusLabel.Text = "Synchronized the latest shared company file data";
     }
 
     private async Task RunLiveCoauthoringAsync()
@@ -1775,7 +1777,7 @@ public sealed class MainForm : Form
     {
         var activeClientId = _activeClient?.Id;
         Text = string.IsNullOrWhiteSpace(_data.ProjectName)
-            ? "AV Matrix Studio"
+            ? "InNasc"
             : _data.ProjectName;
         ResetVerificationStates();
         _welcomePage.RefreshClients();
@@ -1821,7 +1823,7 @@ public sealed class MainForm : Form
                 client.Id))
         {
             MessageBox.Show(this,
-                "This client is not assigned to your Master Matrix account.",
+                "This client is not assigned to your InNasc account.",
                 "Client access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -3201,7 +3203,7 @@ public sealed class MainForm : Form
             !MasterAccessService.CanAccessClient(_data.MasterAccess, session, client.Id))
         {
             MessageBox.Show(this,
-                "This client is not assigned to your Master Matrix account.",
+                "This client is not assigned to your InNasc account.",
                 "Client access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -3260,9 +3262,9 @@ public sealed class MainForm : Form
         if (_data.Settings.MasterWorkspaceReadOnly)
         {
             MessageBox.Show(this,
-                "This workspace was pulled with a Read-only Master Matrix account. " +
+                "This workspace was opened with a Read-only InNasc account. " +
                 "Sign in with an Owner or Tech account to make changes.",
-                "Read-only Master Matrix",
+                "Read-only company workspace",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return false;
@@ -3275,7 +3277,7 @@ public sealed class MainForm : Form
             !MasterAccessService.CanAccessClient(_data.MasterAccess, session, client.Id))
         {
             MessageBox.Show(this,
-                "This client is not assigned to your Master Matrix account.",
+                "This client is not assigned to your InNasc account.",
                 "Client access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -3317,7 +3319,7 @@ public sealed class MainForm : Form
     private void RefreshSyncIndicator()
     {
         if (_syncButton is null || _syncButton.IsDisposed) return;
-        // Only the Master used by the current app session should determine the
+        // Only the company file used by the current app session should determine the
         // indicator. A saved, inactive local link must not keep a synchronized
         // Google Drive session amber (or vice versa).
         var status = SyncIndicatorService.Evaluate(

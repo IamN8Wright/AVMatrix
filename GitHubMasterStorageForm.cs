@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class GitHubMasterStorageForm : Form
 {
@@ -14,7 +14,7 @@ internal sealed class GitHubMasterStorageForm : Form
     private readonly Label _credentialState = new();
     private readonly Label _status = new();
     private readonly Button _test = UiTheme.SecondaryButton("Test private repository");
-    private readonly Button _mirror = UiTheme.PrimaryButton("Mirror active Master now");
+    private readonly Button _mirror = UiTheme.PrimaryButton("Mirror active company file now");
     private bool _busy;
 
     public GitHubMasterStorageForm(AppData data, DataStore store)
@@ -27,7 +27,7 @@ internal sealed class GitHubMasterStorageForm : Form
         if (string.IsNullOrWhiteSpace(_configuration.CompanyDisplayName))
             _configuration.CompanyDisplayName = data.ProjectName;
 
-        Text = "GitHub Master Matrix storage";
+        Text = "GitHub company storage";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -67,7 +67,7 @@ internal sealed class GitHubMasterStorageForm : Form
         var panel = new Panel { Dock = DockStyle.Fill };
         panel.Controls.Add(new Label
         {
-            Text = "GitHub Master Matrix storage",
+            Text = "GitHub company storage",
             AutoSize = true,
             Font = UiTheme.Font(19, FontStyle.Bold),
             ForeColor = UiTheme.Text,
@@ -186,8 +186,8 @@ internal sealed class GitHubMasterStorageForm : Form
         _status.Font = UiTheme.Font(9);
         _status.ForeColor = UiTheme.Text;
         _status.Text = MasterSessionContext.Current is null
-            ? "Repository settings can be configured now. Sign in to a Master Matrix before mirroring data."
-            : "Ready to test the repository or mirror the active Master Matrix.";
+            ? "Repository settings can be configured now. Sign in to a company workspace before mirroring data."
+            : "Ready to test the repository or mirror the active company workspace.";
         panel.Controls.Add(_status);
         return panel;
     }
@@ -271,14 +271,14 @@ internal sealed class GitHubMasterStorageForm : Form
             GitHubMasterStorageConfigStore.Save(_store, _configuration);
             RefreshCredentialState();
             if (showStatus)
-                _status.Text = "GitHub Master Matrix storage settings saved on this PC. The access token is stored in Windows Credential Manager, not in AV Matrix data files.";
+                _status.Text = "GitHub company storage settings saved on this PC. The access token is stored in Windows Credential Manager, not in InNasc data files.";
             return true;
         }
         catch (Exception exception)
         {
             MessageBox.Show(this,
                 exception.Message,
-                "GitHub Master Matrix storage",
+                "GitHub company storage",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return false;
@@ -306,17 +306,17 @@ internal sealed class GitHubMasterStorageForm : Form
         {
             MessageBox.Show(this,
                 "Sign in to the Google Drive or Local / Network Master you want to mirror, then return here.",
-                "No active Master Matrix",
+                "No active company workspace",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
         }
 
         var answer = MessageBox.Show(this,
-            $"Mirror the currently active encrypted Master Matrix to the GitHub company folder\r\n\r\n" +
+            $"Mirror the currently active encrypted company workspace to the GitHub company folder\r\n\r\n" +
             $"companies/{_configuration.CompanyId}/\r\n\r\n" +
             "Existing files in that company folder will be replaced only through a revision-checked Git commit. Continue?",
-            "Mirror Master Matrix to GitHub",
+            "Mirror company workspace to GitHub",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button1);
@@ -324,7 +324,7 @@ internal sealed class GitHubMasterStorageForm : Form
 
         await RunBusyAsync(async () =>
         {
-            _status.Text = "Reading the active Master Matrix and client payloads…";
+            _status.Text = "Reading the active company workspace and client payloads…";
             var result = await GitHubMasterMirrorService.MirrorActiveMasterAsync(
                 _data,
                 _configuration);
@@ -334,7 +334,7 @@ internal sealed class GitHubMasterStorageForm : Form
                 $"Stored: {result.TotalBytes / (1024d * 1024d):N1} MB. " +
                 $"Commit: {result.CommitSha[..Math.Min(12, result.CommitSha.Length)]}." +
                 (result.CompanyCreated ? " A new company folder was created." : string.Empty);
-        }, "The active Master Matrix could not be mirrored to GitHub.");
+        }, "The active company workspace could not be mirrored to GitHub.");
     }
 
     private void ForgetToken()
@@ -387,7 +387,7 @@ internal sealed class GitHubMasterStorageForm : Form
         {
             MessageBox.Show(this,
                 $"{errorMessage}\r\n\r\n{exception.Message}",
-                "GitHub Master Matrix storage",
+                "GitHub company storage",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }

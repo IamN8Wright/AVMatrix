@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class GoogleDriveSyncForm : Form
 {
@@ -98,7 +98,7 @@ internal sealed class GoogleDriveSyncForm : Form
         });
         panel.Controls.Add(new Label
         {
-            Text = "Pull and push one shared .avmatrix master directly through the Google Drive API.",
+            Text = "Pull and push one shared .nasc master directly through the Google Drive API.",
             AutoSize = true,
             Font = UiTheme.Font(9.5f),
             ForeColor = UiTheme.Muted,
@@ -153,7 +153,7 @@ internal sealed class GoogleDriveSyncForm : Form
     {
         var panel = Card();
         AddSectionLabel(panel, "GOOGLE DRIVE MASTER", 16);
-        _shareLink.PlaceholderText = "Paste the Google Drive share link to an existing .avmatrix file";
+        _shareLink.PlaceholderText = "Paste the Google Drive share link to an existing .nasc file";
         _shareLink.Location = new Point(18, 42);
         _shareLink.Size = new Size(725, 29);
         _shareLink.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -348,7 +348,7 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             await GoogleDriveService.ConnectAsync(_data.Settings);
             RefreshLocalState();
-            _details.Text = "Google sign-in completed. Paste and connect the shared .avmatrix link.";
+            _details.Text = "Google sign-in completed. Paste and connect the shared .nasc link.";
         }, "Google sign-in could not be completed.");
     }
 
@@ -378,7 +378,7 @@ internal sealed class GoogleDriveSyncForm : Form
         {
             MessageBox.Show(this,
                 "Log out first, then connect the other Google Drive Master from the welcome screen.",
-                "Switch Master Matrix",
+                "Switch company workspace",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -409,7 +409,7 @@ internal sealed class GoogleDriveSyncForm : Form
             _fileState.ForeColor = UiTheme.Green;
             _details.Text = $"Linked to {metadata.Name}. Pull before the first push from this PC.";
             if (_connectionOnly)
-                _details.Text = $"Linked to {metadata.Name}. Close this window and sign in with your Master Matrix account.";
+                _details.Text = $"Linked to {metadata.Name}. Close this window and sign in with your InNasc account.";
             else
                 await RefreshRemoteAsync(promptForPassword: true);
         }, "The Google Drive share link could not be connected.");
@@ -556,7 +556,7 @@ internal sealed class GoogleDriveSyncForm : Form
             RememberMasterSession(showNotification: true);
             MessageBox.Show(this,
                 "The first Owner account was added to this Google Drive master.",
-                "Master Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "company Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return _masterSession;
         }
         if (!forcePrompt && _masterSession is not null)
@@ -588,7 +588,7 @@ internal sealed class GoogleDriveSyncForm : Form
             var snapshot = await InspectWithPasswordAsync(prompt: true);
             if (snapshot is null) return;
             await EnsureMasterSessionAsync(snapshot, forcePrompt: true);
-        }, "The Master Matrix sign-in could not be completed.");
+        }, "The company workspace sign-in could not be completed.");
     }
 
     private async Task ManageAccountsAsync()
@@ -752,7 +752,7 @@ internal sealed class GoogleDriveSyncForm : Form
         if (protection is null) return;
         _filePassword = protection.Password;
         _protectionState.Text = _filePassword is null
-            ? "The next push will store an unprotected .avmatrix file."
+            ? "The next push will store an unprotected .nasc file."
             : "The next push will password-protect and encrypt the master as compact JWE.";
         _protectionState.ForeColor = _filePassword is null ? UiTheme.Amber : UiTheme.Green;
     }
@@ -823,8 +823,8 @@ internal sealed class GoogleDriveSyncForm : Form
                             "Import the client JSON supplied for the InN8 Labs Google Cloud project.";
         else if (!linked)
             _details.Text = signedIn
-                ? "Paste the share link for an existing .avmatrix file and click Connect share link."
-                : "Click Sign in with Google, then connect the shared .avmatrix link.";
+                ? "Paste the share link for an existing .nasc file and click Connect share link."
+                : "Click Sign in with Google, then connect the shared .nasc link.";
     }
 
     private void ShowSnapshot(GoogleDriveSnapshot snapshot)

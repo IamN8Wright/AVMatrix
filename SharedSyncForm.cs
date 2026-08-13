@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class SharedSyncForm : Form
 {
@@ -31,7 +31,7 @@ internal sealed class SharedSyncForm : Form
             SyncTarget.SharedFile,
             _data.Settings.SharedMasterPath);
         _masterPassword = _masterSession?.MasterKey;
-        Text = "Shared master sync";
+        Text = "Company file sync";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(760, 700);
         Size = new Size(820, 720);
@@ -71,7 +71,7 @@ internal sealed class SharedSyncForm : Form
         var panel = new Panel { Dock = DockStyle.Fill };
         panel.Controls.Add(new Label
         {
-            Text = "Shared master sync",
+            Text = "Company file sync",
             AutoSize = true,
             Font = UiTheme.Font(20, FontStyle.Bold),
             ForeColor = UiTheme.Text,
@@ -79,7 +79,7 @@ internal sealed class SharedSyncForm : Form
         });
         panel.Controls.Add(new Label
         {
-            Text = "Use one .avmatrix master on a file share, synced folder, or Google Drive online.",
+            Text = "Use one .nasc company file on a file share, synced folder, or Google Drive online.",
             AutoSize = true,
             Font = UiTheme.Font(9.5f),
             ForeColor = UiTheme.Muted,
@@ -118,7 +118,7 @@ internal sealed class SharedSyncForm : Form
         link.Click += (_, _) => LinkExisting();
         panel.Controls.Add(link);
 
-        var create = UiTheme.SecondaryButton("Create new master…");
+        var create = UiTheme.SecondaryButton("Create new company file…");
         create.AutoSize = false;
         create.Size = new Size(154, 34);
         create.Location = new Point(154, 82);
@@ -268,16 +268,16 @@ internal sealed class SharedSyncForm : Form
         if (MasterSessionContext.Current is not null)
         {
             MessageBox.Show(this,
-                "Log out first, then choose the other Master Matrix from the welcome screen.",
-                "Switch Master Matrix",
+                "Log out first, then choose the other company workspace from the welcome screen.",
+                "Switch company workspace",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
         }
         using var dialog = new OpenFileDialog
         {
-            Title = "Link an AV Matrix Studio shared master",
-            Filter = "AV Matrix Studio master (*.avmatrix)|*.avmatrix",
+            Title = "Link an InNasc shared company file",
+            Filter = "InNasc master (*.nasc)|*.nasc",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -310,18 +310,18 @@ internal sealed class SharedSyncForm : Form
         {
             MessageBox.Show(this,
                 "Log out first, then use Create new Master File on the welcome screen.",
-                "Create Master Matrix",
+                "Create company workspace",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
         }
         using var dialog = new SaveFileDialog
         {
-            Title = "Create an AV Matrix Studio shared master",
-            Filter = "AV Matrix Studio master (*.avmatrix)|*.avmatrix",
-            DefaultExt = "avmatrix",
+            Title = "Create an InNasc shared company file",
+            Filter = "InNasc master (*.nasc)|*.nasc",
+            DefaultExt = "nasc",
             AddExtension = true,
-            FileName = "AV-Matrix-Shared-Master.avmatrix"
+            FileName = "InNasc-Company.nasc"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         var owner = MasterOwnerSetupForm.Prompt(this);
@@ -337,18 +337,18 @@ internal sealed class SharedSyncForm : Form
             RememberMasterSession(showNotification: true);
             RefreshMasterState();
             MessageBox.Show(this,
-                $"Created the shared master with {result.ClientCount:N0} client(s) and " +
+                $"Created the shared company file with {result.ClientCount:N0} client(s) and " +
                 $"{result.EquipmentCount:N0} equipment record(s).\r\n\r\n" +
                 "This master is encrypted and unlocked by its user accounts.\r\n\r\n" +
                 "Have each collaborator link to this same file and pull once to establish a merge baseline. " +
                 "After that, Merge & push combines independent work automatically.",
-                "Shared master created",
+                "Company file created",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
         catch (Exception exception)
         {
-            ShowError("The shared master could not be created.", exception);
+            ShowError("The shared company file could not be created.", exception);
         }
     }
 
@@ -369,7 +369,7 @@ internal sealed class SharedSyncForm : Form
             var session = EnsureSession(snapshot.Contents.Data.MasterAccess, password);
             if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
             var savedBy = string.IsNullOrWhiteSpace(snapshot.Contents.SavedBy)
-                ? "an earlier AV Matrix Studio revision"
+                ? "an earlier InNasc revision"
                 : snapshot.Contents.SavedBy;
             if (MessageBox.Show(this,
                     $"Pull revision saved by {savedBy}?\r\n\r\n" +
@@ -395,7 +395,7 @@ internal sealed class SharedSyncForm : Form
         }
         catch (Exception exception)
         {
-            ShowError("The shared master could not be pulled.", exception);
+            ShowError("The shared company file could not be pulled.", exception);
         }
     }
 
@@ -413,7 +413,7 @@ internal sealed class SharedSyncForm : Form
             client.Locations.Sum(location => location.Rooms.Sum(room => room.Equipment.Count)));
         if (MessageBox.Show(this,
                 $"Merge this PC's {localClientCount:N0} client(s) and " +
-                $"{localEquipmentCount:N0} equipment record(s) into the shared master?\r\n\r\n" +
+                $"{localEquipmentCount:N0} equipment record(s) into the shared company file?\r\n\r\n" +
                 "Independent changes made by other technicians will be combined automatically. " +
                 "If the same field was changed differently, you will be asked which value to keep.",
                 "Confirm merge and push",
@@ -456,7 +456,7 @@ internal sealed class SharedSyncForm : Form
         catch (SharedMasterConflictException exception)
         {
             MessageBox.Show(this,
-                exception.Message + "\r\n\r\nNo master data was overwritten.",
+                exception.Message + "\r\n\r\nNo company data was overwritten.",
                 "Newer master detected",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -479,8 +479,8 @@ internal sealed class SharedSyncForm : Form
             return;
         }
         if (MessageBox.Show(this,
-                "Unlink this PC from the shared master? The master file will not be deleted.",
-                "Unlink shared master",
+                "Unlink this PC from the shared company file? The master file will not be deleted.",
+                "Unlink shared company file",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
@@ -529,7 +529,7 @@ internal sealed class SharedSyncForm : Form
             RememberMasterSession(showNotification: true);
             MessageBox.Show(this,
                 "The first Owner account was added to this master.",
-                "Master Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "company Owner created", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return _masterSession;
         }
         if (!forcePrompt && _masterSession is not null)
@@ -736,8 +736,8 @@ internal sealed class SharedSyncForm : Form
             if (knownSnapshot is null && File.Exists(path) &&
                 PortableDataService.IsPasswordProtected(path) && string.IsNullOrEmpty(_masterPassword))
             {
-                _state.Text = "Master available — locked";
-                _details.Text = "This shared master is password protected and encrypted as JWE.";
+                _state.Text = "Company available — locked";
+                _details.Text = "This shared company file is password protected and encrypted as JWE.";
                 _guidance.Text = "Pull or push to enter the password. It is never stored in the master file.";
                 _guidance.ForeColor = UiTheme.Amber;
                 return;
@@ -750,7 +750,7 @@ internal sealed class SharedSyncForm : Form
             var savedBy = string.IsNullOrWhiteSpace(snapshot.Contents.SavedBy)
                 ? "an earlier revision"
                 : snapshot.Contents.SavedBy;
-            _state.Text = "Master available";
+            _state.Text = "Company available";
             _details.Text =
                 $"{snapshot.Contents.ClientCount:N0} client(s)  •  " +
                 $"{snapshot.Contents.EquipmentCount:N0} equipment record(s)  •  " +
@@ -791,7 +791,7 @@ internal sealed class SharedSyncForm : Form
     {
         MessageBox.Show(this,
             $"{message}\r\n\r\n{exception.Message}",
-            "Shared master sync",
+            "Company file sync",
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
         RefreshMasterState();

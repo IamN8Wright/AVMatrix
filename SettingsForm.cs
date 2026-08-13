@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class SettingsForm : Form
 {
@@ -167,7 +167,7 @@ internal sealed class SettingsForm : Form
         });
         panel.Controls.Add(new Label
         {
-            Text = "Creates an AV Matrix backup for another PC. This is not an Excel workbook.",
+            Text = "Creates an InNasc backup for another PC. This is not an Excel workbook.",
             AutoSize = true,
             Font = UiTheme.Font(9),
             ForeColor = UiTheme.Text,
@@ -182,7 +182,7 @@ internal sealed class SettingsForm : Form
             Location = new Point(18, 63)
         });
 
-        var export = UiTheme.SecondaryButton("Back up all data (.avmatrix)");
+        var export = UiTheme.SecondaryButton("Back up all data (.nasc)");
         export.AutoSize = false;
         export.Size = new Size(210, 36);
         export.Location = new Point(18, 92);
@@ -221,11 +221,11 @@ internal sealed class SettingsForm : Form
     {
         using var dialog = new SaveFileDialog
         {
-            Title = "Back up all AV Matrix Studio data",
-            Filter = "AV Matrix Studio transfer (*.avmatrix)|*.avmatrix",
-            DefaultExt = "avmatrix",
+            Title = "Back up all InNasc data",
+            Filter = "InNasc company backup (*.nasc)|*.nasc",
+            DefaultExt = "nasc",
             AddExtension = true,
-            FileName = $"AV-Matrix-Transfer-{DateTime.Now:yyyy-MM-dd}.avmatrix"
+            FileName = $"InNasc-Company-{DateTime.Now:yyyy-MM-dd}.nasc"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         var protection = PasswordDialog.PromptForNewFile(this);
@@ -237,7 +237,7 @@ internal sealed class SettingsForm : Form
                 ? $"Exported {Path.GetFileName(dialog.FileName)}"
                 : $"Exported password-protected {Path.GetFileName(dialog.FileName)}";
             MessageBox.Show(this,
-                "The .avmatrix backup is ready" +
+                "The .nasc backup is ready" +
                 (protection.Password is null ? ". " : " and encrypted as JWE. ") +
                 "Copy it to the new PC and restore it from Settings. " +
                 "For Excel, use the Excel button on a client card or Export Excel in its workspace.",
@@ -259,8 +259,8 @@ internal sealed class SettingsForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Restore AV Matrix Studio backup",
-            Filter = "AV Matrix Studio transfer (*.avmatrix)|*.avmatrix|All files (*.*)|*.*"
+            Title = "Restore InNasc backup",
+            Filter = "InNasc company backup (*.nasc)|*.nasc|All files (*.*)|*.*"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try

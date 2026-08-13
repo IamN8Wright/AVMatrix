@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class ClientSubmatrixService
 {
@@ -61,14 +61,22 @@ internal static class ClientSubmatrixService
     {
         var fullPath = Path.GetFullPath(masterPath);
         var directory = Path.GetDirectoryName(fullPath)
-            ?? throw new InvalidOperationException("The master path has no parent folder.");
+            ?? throw new InvalidOperationException("The company path has no parent folder.");
         return Path.Combine(directory, Path.GetFileNameWithoutExtension(fullPath) + ".clients");
     }
 
-    public static string SharedClientPath(string masterPath, Guid clientId) =>
-        Path.Combine(SharedDirectory(masterPath), $"{clientId:N}.avclient");
+    public static string SharedClientPath(string masterPath, Guid clientId)
+    {
+        var directory = SharedDirectory(masterPath);
+        var current = Path.Combine(directory, $"{clientId:N}.nascclient");
+        var legacy = Path.Combine(directory, $"{clientId:N}.avclient");
+        return File.Exists(current) || !File.Exists(legacy) ? current : legacy;
+    }
 
     public static string GoogleDriveClientFileName(Guid masterId, Guid clientId) =>
+        $"InNasc-{masterId:N}-{clientId:N}.nascclient";
+
+    public static string LegacyGoogleDriveClientFileName(Guid masterId, Guid clientId) =>
         $"AVMatrix-{masterId:N}-{clientId:N}.avclient";
 
     public static AppData ClientPackage(ClientRecord client) => new()
@@ -84,7 +92,7 @@ internal static class ClientSubmatrixService
         var imported = PortableDataService.ImportBytes(contents, password);
         var client = imported.Data.Clients.SingleOrDefault(candidate => candidate.Id == clientId)
             ?? throw new InvalidDataException(
-                "The client sub-matrix does not contain the expected client.");
+                "The client package does not contain the expected client.");
         return client;
     }
 
@@ -102,5 +110,5 @@ internal static class ClientSubmatrixService
 
     private static T Clone<T>(T source) =>
         JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(source, Options), Options)
-        ?? throw new InvalidOperationException("The sub-matrix data could not be copied.");
+        ?? throw new InvalidOperationException("The InNasc company data could not be copied.");
 }

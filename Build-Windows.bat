@@ -5,7 +5,7 @@ cd /d "%~dp0"
 where dotnet >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo The .NET 8 SDK is required to build AV Matrix Studio.
+  echo The .NET 8 SDK is required to build InNasc.
   echo Download it from: https://dotnet.microsoft.com/download/dotnet/8.0
   echo Install the SDK, then run this file again.
   echo.
@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Restoring AV Matrix Studio production branding...
+echo Restoring InNasc supplemental branding...
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Restore-BrandAssets.ps1"
 if errorlevel 1 (
@@ -26,10 +26,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo Building AV Matrix Studio for 64-bit Windows...
+echo Building InNasc for 64-bit Windows...
 echo.
 
-dotnet publish AVMatrixStudio.csproj ^
+dotnet publish InNasc.csproj ^
   --configuration Release ^
   --runtime win-x64 ^
   --self-contained true ^
@@ -50,7 +50,7 @@ if errorlevel 1 (
 
 echo.
 echo Build complete:
-echo %~dp0publish\win-x64\AVMatrixStudio.exe
+echo %~dp0publish\win-x64\InNasc.exe
 echo.
 explorer "%~dp0publish\win-x64"
 pause

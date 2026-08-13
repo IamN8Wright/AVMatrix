@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class Program
 {
@@ -12,16 +12,42 @@ internal static class Program
             ShowFatal(args.ExceptionObject as Exception ?? new Exception("Unknown application error."));
 
         var store = new DataStore();
-        var data = store.Load();
-        var mainForm = new MainForm(data, store);
-        var startupUpdateChecked = false;
-        mainForm.Shown += async (_, _) =>
+        while (true)
         {
-            if (startupUpdateChecked) return;
-            startupUpdateChecked = true;
-            await CheckForStartupUpdateAsync(mainForm);
-        };
-        Application.Run(mainForm);
+            var data = store.Load();
+            UiTheme.SetDarkMode(data.Settings.DarkMode);
+            using (var startup = new InNascStartupForm())
+            {
+                if (startup.ShowDialog() != DialogResult.OK || startup.Selection is null)
+                    return;
+                try
+                {
+                    InNascCompanyOpenService.Open(data, store, startup.Selection);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        $"The selected company could not be opened.\r\n\r\n{exception.Message}",
+                        "Open InNasc company",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    continue;
+                }
+            }
+
+            using var mainForm = new MainForm(data, store);
+            var signOutRequested = false;
+            mainForm.SignOutRequested += (_, _) => signOutRequested = true;
+            var startupUpdateChecked = false;
+            mainForm.Shown += async (_, _) =>
+            {
+                if (startupUpdateChecked) return;
+                startupUpdateChecked = true;
+                await CheckForStartupUpdateAsync(mainForm);
+            };
+            Application.Run(mainForm);
+            if (!signOutRequested) return;
+        }
     }
 
     private static async Task CheckForStartupUpdateAsync(Form owner)
@@ -41,10 +67,10 @@ internal static class Program
 
         var install = MessageBox.Show(
             owner,
-            $"AV Matrix Studio {release.Version} is available from GitHub.\r\n\r\n" +
+            $"InNasc {release.Version} is available from GitHub.\r\n\r\n" +
             $"This PC is running {AppInfo.Revision}.\r\n\r\n" +
             "Download, verify, and install the update now?",
-            "AV Matrix Studio update available",
+            "InNasc update available",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Information,
             MessageBoxDefaultButton.Button1);
@@ -65,7 +91,7 @@ internal static class Program
             MessageBox.Show(
                 owner,
                 $"The GitHub update could not be downloaded or verified.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -93,7 +119,7 @@ internal static class Program
             MessageBox.Show(
                 owner,
                 $"The verified update could not be started.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -105,7 +131,7 @@ internal static class Program
         {
             var logDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AVMatrixStudio");
+                "InNasc");
             Directory.CreateDirectory(logDirectory);
             File.AppendAllText(
                 Path.Combine(logDirectory, "error.log"),
@@ -117,8 +143,8 @@ internal static class Program
         }
 
         MessageBox.Show(
-            $"AV Matrix Studio encountered an error.\r\n\r\n{exception.Message}",
-            "AV Matrix Studio",
+            $"InNasc encountered an error.\r\n\r\n{exception.Message}",
+            "InNasc",
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
     }

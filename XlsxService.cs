@@ -4,7 +4,7 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record ExcelImportSkippedRow(
     string SourceFile,
@@ -283,7 +283,7 @@ public static class XlsxService
         var contexts = Flatten(clients).ToList();
         var workbookTitle = clients.Count == 1
             ? clients.First().Name
-            : "AV Matrix Studio Client Export";
+            : "InNasc Client Export";
         var sheets = new List<ExportSheet>
         {
             BuildSummary(clients, contexts, workbookTitle)
@@ -844,7 +844,7 @@ public static class XlsxService
         var titles = string.Concat(sheets.Select(sheet => $"<vt:lpstr>{EscapeText(sheet.Name)}</vt:lpstr>"));
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
-               "<Application>AV Matrix Studio</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop>" +
+               "<Application>InNasc</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop>" +
                $"<HeadingPairs><vt:vector size=\"2\" baseType=\"variant\"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>{sheets.Count}</vt:i4></vt:variant></vt:vector></HeadingPairs>" +
                $"<TitlesOfParts><vt:vector size=\"{sheets.Count}\" baseType=\"lpstr\">{titles}</vt:vector></TitlesOfParts>" +
                "<Company>InN8 Labs</Company><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0300</AppVersion></Properties>";

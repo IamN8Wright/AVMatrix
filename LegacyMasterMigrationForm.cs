@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class LegacyMasterMigrationForm : Form
 {
@@ -6,7 +6,7 @@ internal sealed class LegacyMasterMigrationForm : Form
 
     private LegacyMasterMigrationForm()
     {
-        Text = "Migrate legacy Master Matrix";
+        Text = "Migrate legacy company workspace";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;

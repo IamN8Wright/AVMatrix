@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record AppReleaseInfo(
     Version Version,
@@ -23,8 +23,8 @@ internal static class AppUpdateService
 {
     private const string GitHubOwner = "IamN8Wright";
     private const string GitHubRepository = "AVMatrix";
-    private const string ExecutableAssetName = "AVMatrixStudio.exe";
-    private const string ChecksumAssetName = "AVMatrixStudio.exe.sha256";
+    private const string ExecutableAssetName = "InNasc.exe";
+    private const string ChecksumAssetName = "InNasc.exe.sha256";
     private const long MinimumExecutableBytes = 1_000_000;
 
     private static string LatestReleaseApiUrl =>
@@ -41,13 +41,13 @@ internal static class AppUpdateService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        progress?.Report("Checking GitHub for the latest AV Matrix Studio release…");
+        progress?.Report("Checking GitHub for the latest InNasc release…");
         using var http = CreateHttpClient();
         var release = await ReadLatestReleaseAsync(http, cancellationToken);
 
         var stagingDirectory = Path.Combine(
             Path.GetTempPath(),
-            "AVMatrixStudio",
+            "InNasc",
             "Updates",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stagingDirectory);
@@ -55,7 +55,7 @@ internal static class AppUpdateService
 
         try
         {
-            progress?.Report($"Downloading AV Matrix Studio {release.Version} from GitHub…");
+            progress?.Report($"Downloading InNasc {release.Version} from GitHub…");
             var expectedHash = await DownloadExpectedChecksumAsync(
                 http,
                 release.ChecksumUrl,
@@ -70,7 +70,7 @@ internal static class AppUpdateService
             var info = new FileInfo(executablePath);
             if (info.Length < MinimumExecutableBytes)
                 throw new InvalidDataException(
-                    "The downloaded executable is too small to be an AV Matrix Studio release.");
+                    "The downloaded executable is too small to be an InNasc release.");
             if (!HasPortableExecutableHeader(executablePath))
                 throw new InvalidDataException(
                     "The downloaded file is not a valid Windows executable.");
@@ -78,10 +78,10 @@ internal static class AppUpdateService
             var versionInfo = FileVersionInfo.GetVersionInfo(executablePath);
             if (!string.Equals(
                     versionInfo.ProductName,
-                    "AV Matrix Studio",
+                    "InNasc",
                     StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException(
-                    "The downloaded executable is not identified as AV Matrix Studio.");
+                    "The downloaded executable is not identified as InNasc.");
             if (!Version.TryParse(
                     versionInfo.ProductVersion?.Split('+')[0],
                     out var executableVersion))
@@ -128,15 +128,15 @@ internal static class AppUpdateService
         var targetPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(targetPath) ||
             !targetPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-            !IsAvMatrixStudioExecutable(targetPath))
+            !IsInNascExecutable(targetPath))
             throw new InvalidOperationException(
-                "Automatic installation is available from a packaged AV Matrix Studio executable. " +
+                "Automatic installation is available from a packaged InNasc executable. " +
                 "This copy appears to be running from source.");
 
         var backupPath = targetPath + ".previous";
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AVMatrixStudio",
+            "InNasc",
             "update-error.log");
         var sourceDirectory = Path.GetDirectoryName(candidate.ExecutablePath) ?? Path.GetTempPath();
         var script =
@@ -184,7 +184,7 @@ internal static class AppUpdateService
             Timeout = TimeSpan.FromMinutes(15)
         };
         http.DefaultRequestHeaders.UserAgent.ParseAdd(
-            $"AV-Matrix-Studio/{AppInfo.Revision}");
+            $"InNasc/{AppInfo.Revision}");
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
         return http;
@@ -197,7 +197,7 @@ internal static class AppUpdateService
         using var response = await http.GetAsync(LatestReleaseApiUrl, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             throw new InvalidOperationException(
-                "No published AV Matrix Studio GitHub Release is available yet.");
+                "No published InNasc GitHub Release is available yet.");
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException(
                 $"GitHub returned {(int)response.StatusCode} {response.ReasonPhrase} while checking for updates.");
@@ -212,7 +212,7 @@ internal static class AppUpdateService
             : tag;
         if (!Version.TryParse(versionText, out var version))
             throw new InvalidDataException(
-                $"The latest GitHub Release tag '{tag}' is not a valid AV Matrix Studio version.");
+                $"The latest GitHub Release tag '{tag}' is not a valid InNasc version.");
 
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("The latest GitHub Release does not contain release assets.");
@@ -298,14 +298,14 @@ internal static class AppUpdateService
             ? value.GetString() ?? string.Empty
             : string.Empty;
 
-    private static bool IsAvMatrixStudioExecutable(string path)
+    private static bool IsInNascExecutable(string path)
     {
         try
         {
             var versionInfo = FileVersionInfo.GetVersionInfo(path);
             return string.Equals(
                 versionInfo.ProductName,
-                "AV Matrix Studio",
+                "InNasc",
                 StringComparison.OrdinalIgnoreCase);
         }
         catch
@@ -347,7 +347,7 @@ internal sealed class AppUpdateProgressForm : Form
 
     public AppUpdateProgressForm()
     {
-        Text = "Update AV Matrix Studio";
+        Text = "Update InNasc";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
