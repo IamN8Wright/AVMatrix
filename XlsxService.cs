@@ -315,4 +315,574 @@ public static class XlsxService
                 WriteText(archive, "docProps/core.xml", CorePropertiesXml(workbookTitle));
                 WriteText(archive, "xl/workbook.xml", WorkbookXml(sheets));
                 WriteText(archive, "xl/_rels/workbook.xml.rels", WorkbookRelationshipsXml(sheets.Count));
-                WriteText(archive, "xl/styles.xml", Stylçm:¶‰žËkºwµçQÉ¥¹œÉ•ÅÕ•ÍÑ•‘9…µ”°%M•ÐñÍÑÉ¥¹œøÕÍ•‘9…µ•Ì¤4(€€€ì4(€€€€€€€Ù…È¥¹Ù…±¥‘¡…É…Ñ•ÉÌ€ô¹•Ü!…Í¡M•Ðñ¡…Èø¡llœ°€tœ°€œèœ°€œ¨œ°€œüœ°€œ¼œ°€qpt¤ì4(€€€€€€€Ù…È±•…¹•€ô¹•ÜÍÑÉ¥¹œ¡É•ÅÕ•ÍÑ•‘9…µ”4(€€€€€€€€€€€€€€€€¹M•±•Ð¡¡…É…Ñ•È€ôø¥¹Ù…±¥‘¡…É…Ñ•ÉÌ¹½¹Ñ…¥¹Ì¡¡…É…Ñ•È¤€ü€œ€œ€è¡…É…Ñ•È¤4(€€€€€€€€€€€€€€€€¹Q½ÉÉ…ä ¤¤4(€€€€€€€€€€€€¹QÉ¥´ ¤4(€€€€€€€€€€€€¹QÉ¥´ pœœ¤4(€€€€€€€€€€€€¹QÉ¥´ ¤ì4(€€€€€€€±•…¹•€ôÍÑÉ¥¹œ¹)½¥¸ ˆ€ˆ°±•…¹•¹MÁ±¥Ð œ€œ°MÑÉ¥¹MÁ±¥Ñ=ÁÑ¥½¹Ì¹I•µ½Ù•µÁÑå¹ÑÉ¥•Ì¤¤ì4(€€€€€€€¥˜€¡ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡±•…¹•¤¤±•…¹•€ô€‰1½…Ñ¥½¸ˆì4(4(€€€€€€€Ù…È‰…Í•9…µ”€ô±•…¹•‘l¸¹5…Ñ ¹5¥¸ ÌÄ°±•…¹•¹1•¹Ñ ¥tì4(€€€€€€€Ù…È…¹‘¥‘…Ñ”€ô‰…Í•9…µ”ì4(€€€€€€€Ù…ÈÍÕ™™¥á9Õµ‰•È€ô€Èì4(€€€€€€€Ý¡¥±”€ …ÕÍ•‘9…µ•Ì¹‘¡…¹‘¥‘…Ñ”¤¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÍÕ™™¥à€ô€ˆ€¡íÍÕ™™¥á9Õµ‰•È¬­ô¤ˆì4(€€€€€€€€€€€…¹‘¥‘…Ñ”€ô‰…Í•9…µ•l¸¹5…Ñ ¹5¥¸¡‰…Í•9…µ”¹1•¹Ñ °€ÌÄ€´ÍÕ™™¥à¹1•¹Ñ ¥t€¬ÍÕ™™¥àì4(€€€€€€€ô4(€€€€€€€É•ÑÕÉ¸…¹‘¥‘…Ñ”ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œMÑ…ÑÕÍQ•áÐ¡9•ÑÝ½É­MÑ…Ñ”ÍÑ…Ñ”¤€ôøÍÑ…Ñ”ÍÝ¥Ñ 4(€€€ì4(€€€€€€€9•ÑÝ½É­MÑ…Ñ”¹I•…¡…‰±”€ôø€‰=¹±¥¹”ˆ°4(€€€€€€€9•ÑÝ½É­MÑ…Ñ”¹U¹É•…¡…‰±”€ôø€‰=™™±¥¹”ˆ°4(€€€€€€€9•ÑÝ½É­MÑ…Ñ”¹9½‘‘É•ÍÌ€ôø€‰9¼%@ˆ°4(€€€€€€€9•ÑÝ½É­MÑ…Ñ”¹A…ÉÑ¥…°€ôø€‰A…ÉÑ¥…±±ä½¹±¥¹”ˆ°4(€€€€€€€9•ÑÝ½É­MÑ…Ñ”¹5…5¥Íµ…Ñ €ôø€‰5µ¥Íµ…Ñ ˆ°4(€€€€€€€|€ôø€‰]…¥Ñ¥¹œÑ¼Ù•É¥™äˆ4(€€€ôì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ1½…±Q¥µ”¡…Ñ•Q¥µ”üÙ…±Õ”¤€ôøÙ…±Õ”ü¹Q½1½…±Q¥µ” ¤¹Q½MÑÉ¥¹œ ‰åååäµ54µ‘! éµ´éÍÌˆ¤€üüÍÑÉ¥¹œ¹µÁÑäì4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ%ÁM½ÉÑY…±Õ”¡ÍÑÉ¥¹œ¥À¤€ôøÍÑÉ¥¹œ¹)½¥¸ œ¸œ°¥À¹MÁ±¥Ð œ¸œ¤¹M•±•Ð¡Á…ÉÐ€ôø4(€€€€€€€¥¹Ð¹QÉåA…ÉÍ”¡Á…ÉÐ°½ÕÐÙ…ÈÙ…±Õ”¤€üÙ…±Õ”¹Q½MÑÉ¥¹œ ‰Ìˆ¤€èÁ…ÉÐ¤¤ì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥]É¥Ñ•Q•áÐ¡i¥ÁÉ¡¥Ù”…É¡¥Ù”°ÍÑÉ¥¹œÁ…Ñ °ÍÑÉ¥¹œ½¹Ñ•¹Ð¤4(€€€ì4(€€€€€€€Ù…È•¹ÑÉä€ô…É¡¥Ù”¹É•…Ñ•¹ÑÉä¡Á…Ñ °½µÁÉ•ÍÍ¥½¹1•Ù•°¹=ÁÑ¥µ…°¤ì4(€€€€€€€ÕÍ¥¹œÙ…ÈÍÑÉ•…´€ô•¹ÑÉä¹=Á•¸ ¤ì4(€€€€€€€ÕÍ¥¹œÙ…ÈÝÉ¥Ñ•È€ô¹•ÜMÑÉ•…µ]É¥Ñ•È¡ÍÑÉ•…´°¹•ÜUQá¹½‘¥¹œ¡™…±Í”¤¤ì4(€€€€€€€ÝÉ¥Ñ•È¹]É¥Ñ”¡½¹Ñ•¹Ð¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ½¹Ñ•¹ÑQåÁ•Íaµ°¡¥¹ÐÍ¡••Ñ½Õ¹Ð¤4(€€€ì4(€€€€€€€Ù…ÈÍ¡••Ñ=Ù•ÉÉ¥‘•Ì€ôÍÑÉ¥¹œ¹½¹…Ð¡¹Õµ•É…‰±”¹I…¹” Ä°Í¡••Ñ½Õ¹Ð¤¹M•±•Ð¡¥¹‘•à€ôø4(€€€€€€€€€€€€ˆñ=Ù•ÉÉ¥‘”A…ÉÑ9…µ”õpˆ½á°½Ý½É­Í¡••ÑÌ½Í¡••Ñí¥¹‘•áô¹áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹ÍÁÉ•…‘Í¡••Ñµ°¹Ý½É­Í¡••Ð­áµ±pˆ¼øˆ¤¤ì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñQåÁ•Ìáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½Á…­…”¼ÈÀÀØ½½¹Ñ•¹ÐµÑåÁ•Ípˆøˆ€¬4(€€€€€€€€€€€€€€€ˆñ•™…Õ±ÐáÑ•¹Í¥½¸õp‰É•±Ípˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµÁ…­…”¹É•±…Ñ¥½¹Í¡¥ÁÌ­áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€€ˆñ•™…Õ±ÐáÑ•¹Í¥½¸õp‰áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€€ˆñ=Ù•ÉÉ¥‘”A…ÉÑ9…µ”õpˆ½á°½Ý½É­‰½½¬¹áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹ÍÁÉ•…‘Í¡••Ñµ°¹Í¡••Ð¹µ…¥¸­áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€€ˆñ=Ù•ÉÉ¥‘”A…ÉÑ9…µ”õpˆ½á°½ÍÑå±•Ì¹áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹ÍÁÉ•…‘Í¡••Ñµ°¹ÍÑå±•Ì­áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€€ˆñ=Ù•ÉÉ¥‘”A…ÉÑ9…µ”õpˆ½‘½AÉ½ÁÌ½½É”¹áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµÁ…­…”¹½É”µÁÉ½Á•ÉÑ¥•Ì­áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€€ˆñ=Ù•ÉÉ¥‘”A…ÉÑ9…µ”õpˆ½‘½AÉ½ÁÌ½…ÁÀ¹áµ±pˆ½¹Ñ•¹ÑQåÁ”õp‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹•áÑ•¹‘•µÁÉ½Á•ÉÑ¥•Ì­áµ±pˆ¼øˆ€¬4(€€€€€€€€€€€€€€Í¡••Ñ=Ù•ÉÉ¥‘•Ì€¬€ˆð½QåÁ•Ìøˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œA…­…•I•±…Ñ¥½¹Í¡¥ÁÍaµ° ¤€ôø4(€€€€€€€€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥ÁÌáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½Á…­…”¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÍpˆøˆ€¬4(€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥À%õp‰É%ÅpˆQåÁ”õp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÌ½½™™¥•½Õµ•¹ÑpˆQ…É•Ðõp‰á°½Ý½É­‰½½¬¹áµ±pˆ¼øˆ€¬4(€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥À%õp‰É%ÉpˆQåÁ”õp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½Á…­…”¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÌ½µ•Ñ…‘…Ñ„½½É”µÁÉ½Á•ÉÑ¥•ÍpˆQ…É•Ðõp‰‘½AÉ½ÁÌ½½É”¹áµ±pˆ¼øˆ€¬4(€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥À%õp‰É%ÍpˆQåÁ”õp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÌ½•áÑ•¹‘•µÁÉ½Á•ÉÑ¥•ÍpˆQ…É•Ðõp‰‘½AÉ½ÁÌ½…ÁÀ¹áµ±pˆ¼øˆ€¬4(€€€€€€€€ˆð½I•±…Ñ¥½¹Í¡¥ÁÌøˆì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ]½É­‰½½­aµ°¡%I•…‘=¹±å1¥ÍÐñáÁ½ÉÑM¡••ÐøÍ¡••ÑÌ¤4(€€€ì4(€€€€€€€Ù…ÈÍ¡••Ñaµ°€ôÍÑÉ¥¹œ¹½¹…Ð¡Í¡••ÑÌ¹M•±•Ð ¡Í¡••Ð°¥¹‘•à¤€ôø4(€€€€€€€€€€€€ˆñÍ¡••Ð¹…µ”õp‰íÍ…Á•ÑÑÉ¥‰ÕÑ”¡Í¡••Ð¹9…µ”¥õpˆÍ¡••Ñ%õp‰í¥¹‘•à€¬€ÅõpˆÈé¥õp‰É%‘í¥¹‘•à€¬€Åõpˆ¼øˆ¤¤ì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñÝ½É­‰½½¬áµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½ÍÁÉ•…‘Í¡••Ñµ°¼ÈÀÀØ½µ…¥¹pˆáµ±¹ÌéÈõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÍpˆøˆ€¬4(€€€€€€€€€€€€€€€ˆñÍ¡••ÑÌùíÍ¡••Ñaµ±ôð½Í¡••ÑÌøð½Ý½É­‰½½¬øˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ]½É­‰½½­I•±…Ñ¥½¹Í¡¥ÁÍaµ°¡¥¹ÐÍ¡••Ñ½Õ¹Ð¤4(€€€ì4(€€€€€€€Ù…ÈÉ•±…Ñ¥½¹Í¡¥ÁÌ€ôÍÑÉ¥¹œ¹½¹…Ð¡¹Õµ•É…‰±”¹I…¹” Ä°Í¡••Ñ½Õ¹Ð¤¹M•±•Ð¡¥¹‘•à€ôø4(€€€€€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥À%õp‰É%‘í¥¹‘•áõpˆQåÁ”õp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÌ½Ý½É­Í¡••ÑpˆQ…É•Ðõp‰Ý½É­Í¡••ÑÌ½Í¡••Ñí¥¹‘•áô¹áµ±pˆ¼øˆ¤¤ì4(€€€€€€€É•±…Ñ¥½¹Í¡¥ÁÌ€¬ô€ˆñI•±…Ñ¥½¹Í¡¥À%õp‰É%‘íÍ¡••Ñ½Õ¹Ð€¬€ÅõpˆQåÁ”õp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÌ½ÍÑå±•ÍpˆQ…É•Ðõp‰ÍÑå±•Ì¹áµ±pˆ¼øˆì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñI•±…Ñ¥½¹Í¡¥ÁÌáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½Á…­…”¼ÈÀÀØ½É•±…Ñ¥½¹Í¡¥ÁÍpˆùíÉ•±…Ñ¥½¹Í¡¥ÁÍôð½I•±…Ñ¥½¹Í¡¥ÁÌøˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œMÑå±•Íaµ° ¤€ôø4(€€€€€€€€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€ˆñÍÑå±•M¡••Ðáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½ÍÁÉ•…‘Í¡••Ñµ°¼ÈÀÀØ½µ…¥¹pˆøˆ€¬4(€€€€€€€€ˆñ™½¹ÑÌ½Õ¹ÐõpˆÍpˆøˆ€¬4(€€€€€€€€ˆñ™½¹ÐøñÍèÙ…°õpˆÄÁpˆ¼øñ¹…µ”Ù…°õp‰ÁÑ½Ípˆ¼øñ™…µ¥±äÙ…°õpˆÉpˆ¼øð½™½¹Ðøˆ€¬4(€€€€€€€€ˆñ™½¹Ðøñˆ¼øñ½±½ÈÉˆõp‰pˆ¼øñÍèÙ…°õpˆÄÙpˆ¼øñ¹…µ”Ù…°õp‰ÁÑ½Ì¥ÍÁ±…åpˆ¼øð½™½¹Ðøˆ€¬4(€€€€€€€€ˆñ™½¹Ðøñˆ¼øñ½±½ÈÉˆõp‰pˆ¼øñÍèÙ…°õpˆÄÁpˆ¼øñ¹…µ”Ù…°õp‰ÁÑ½Ípˆ¼øð½™½¹Ðøˆ€¬4(€€€€€€€€ˆð½™½¹ÑÌøˆ€¬4(€€€€€€€€ˆñ™¥±±Ì½Õ¹ÐõpˆÑpˆøñ™¥±°øñÁ…ÑÑ•É¹¥±°Á…ÑÑ•É¹QåÁ”õp‰¹½¹•pˆ¼øð½™¥±°øñ™¥±°øñÁ…ÑÑ•É¹¥±°Á…ÑÑ•É¹QåÁ”õp‰É…äÄÈÕpˆ¼øð½™¥±°øˆ€¬4(€€€€€€€€ˆñ™¥±°øñÁ…ÑÑ•É¹¥±°Á…ÑÑ•É¹QåÁ”õp‰Í½±¥‘pˆøñ™½±½ÈÉˆõp‰ÁÄÜÉpˆ¼øñ‰½±½È¥¹‘•á•õpˆØÑpˆ¼øð½Á…ÑÑ•É¹¥±°øð½™¥±°øˆ€¬4(€€€€€€€€ˆñ™¥±°øñÁ…ÑÑ•É¹¥±°Á…ÑÑ•É¹QåÁ”õp‰Í½±¥‘pˆøñ™½±½ÈÉˆõp‰ÈÔØÍ	pˆ¼øñ‰½±½È¥¹‘•á•õpˆØÑpˆ¼øð½Á…ÑÑ•É¹¥±°øð½™¥±°øð½™¥±±Ìøˆ€¬4(€€€€€€€€ˆñ‰½É‘•ÉÌ½Õ¹ÐõpˆÉpˆøñ‰½É‘•Èøñ±•™Ð¼øñÉ¥¡Ð¼øñÑ½À¼øñ‰½ÑÑ½´¼øñ‘¥…½¹…°¼øð½‰½É‘•Èøˆ€¬4(€€€€€€€€ˆñ‰½É‘•Èøñ±•™ÐÍÑå±”õp‰Ñ¡¥¹pˆøñ½±½ÈÉˆõp‰Ípˆ¼øð½±•™ÐøñÉ¥¡ÐÍÑå±”õp‰Ñ¡¥¹pˆøñ½±½ÈÉˆõp‰Ípˆ¼øð½É¥¡Ðøˆ€¬4(€€€€€€€€ˆñÑ½ÀÍÑå±”õp‰Ñ¡¥¹pˆøñ½±½ÈÉˆõp‰Ípˆ¼øð½Ñ½Àøñ‰½ÑÑ½´ÍÑå±”õp‰Ñ¡¥¹pˆøñ½±½ÈÉˆõp‰Ípˆ¼øð½‰½ÑÑ½´øñ‘¥…½¹…°¼øð½‰½É‘•Èøð½‰½É‘•ÉÌøˆ€¬4(€€€€€€€€ˆñ•±±MÑå±•a™Ì½Õ¹ÐõpˆÅpˆøñá˜¹ÕµµÑ%õpˆÁpˆ™½¹Ñ%õpˆÁpˆ™¥±±%õpˆÁpˆ‰½É‘•É%õpˆÁpˆ¼øð½•±±MÑå±•a™Ìøˆ€¬4(€€€€€€€€ˆñ•±±a™Ì½Õ¹ÐõpˆÑpˆøˆ€¬4(€€€€€€€€ˆñá˜¹ÕµµÑ%õpˆÁpˆ™½¹Ñ%õpˆÁpˆ™¥±±%õpˆÁpˆ‰½É‘•É%õpˆÁpˆá™%õpˆÁpˆ¼øˆ€¬4(€€€€€€€€ˆñá˜¹ÕµµÑ%õpˆÁpˆ™½¹Ñ%õpˆÅpˆ™¥±±%õpˆÉpˆ‰½É‘•É%õpˆÁpˆá™%õpˆÁpˆ…ÁÁ±å½¹ÐõpˆÅpˆ…ÁÁ±å¥±°õpˆÅpˆøñ…±¥¹µ•¹ÐÙ•ÉÑ¥…°õp‰•¹Ñ•Épˆ¼øð½á˜øˆ€¬4(€€€€€€€€ˆñá˜¹ÕµµÑ%õpˆÁpˆ™½¹Ñ%õpˆÉpˆ™¥±±%õpˆÍpˆ‰½É‘•É%õpˆÅpˆá™%õpˆÁpˆ…ÁÁ±å½¹ÐõpˆÅpˆ…ÁÁ±å¥±°õpˆÅpˆ…ÁÁ±å	½É‘•ÈõpˆÅpˆøñ…±¥¹µ•¹ÐÙ•ÉÑ¥…°õp‰•¹Ñ•ÉpˆÝÉ…ÁQ•áÐõpˆÅpˆ¼øð½á˜øˆ€¬4(€€€€€€€€ˆñá˜¹ÕµµÑ%õpˆÁpˆ™½¹Ñ%õpˆÁpˆ™¥±±%õpˆÁpˆ‰½É‘•É%õpˆÅpˆá™%õpˆÁpˆ…ÁÁ±å	½É‘•ÈõpˆÅpˆøñ…±¥¹µ•¹ÐÙ•ÉÑ¥…°õp‰Ñ½ÁpˆÝÉ…ÁQ•áÐõpˆÅpˆ¼øð½á˜øˆ€¬4(€€€€€€€€ˆð½•±±a™Ìøñ•±±MÑå±•Ì½Õ¹ÐõpˆÅpˆøñ•±±MÑå±”¹…µ”õp‰9½Éµ…±pˆá™%õpˆÁpˆ‰Õ¥±Ñ¥¹%õpˆÁpˆ¼øð½•±±MÑå±•Ìøˆ€¬4(€€€€€€€€ˆð½ÍÑå±•M¡••Ðøˆì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ]½É­Í¡••Ñaµ°¡áÁ½ÉÑM¡••ÐÍ¡••Ð¤4(€€€ì4(€€€€€€€Ù…Èµ…á½±Õµ¸€ô5…Ñ ¹5…à Ä°Í¡••Ð¹I½ÝÌ¹5…à¡É½Ü€ôøÉ½Ü¹Y…±Õ•Ì¹½Õ¹Ð¤¤ì4(€€€€€€€Ù…È‘¥µ•¹Í¥½¸€ô€‰Äéí½±Õµ¹9…µ”¡µ…á½±Õµ¸€´€Ä¥õí5…Ñ ¹5…à Ä°Í¡••Ð¹I½ÝÌ¹½Õ¹Ð¥ôˆì4(€€€€€€€Ù…È½±Õµ¹Ì€ôÍÑÉ¥¹œ¹½¹…Ð¡Í¡••Ð¹½±Õµ¹]¥‘Ñ¡Ì¹M•±•Ð ¡Ý¥‘Ñ °¥¹‘•à¤€ôø4(€€€€€€€€€€€€ˆñ½°µ¥¸õp‰í¥¹‘•à€¬€Åõpˆµ…àõp‰í¥¹‘•à€¬€ÅõpˆÝ¥‘Ñ õp‰íÝ¥‘Ñ ¹Q½MÑÉ¥¹œ¡Õ±ÑÕÉ•%¹™¼¹%¹Ù…É¥…¹ÑÕ±ÑÕÉ”¥õpˆÕÍÑ½µ]¥‘Ñ õpˆÅpˆ¼øˆ¤¤ì4(€€€€€€€Ù…ÈÉ½Ýaµ°€ô¹•ÜMÑÉ¥¹	Õ¥±‘•È ¤ì4(€€€€€€€™½È€¡Ù…ÈÉ½Ý%¹‘•à€ô€ÀìÉ½Ý%¹‘•à€ðÍ¡••Ð¹I½ÝÌ¹½Õ¹ÐìÉ½Ý%¹‘•à¬¬¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÉ½Ü€ôÍ¡••Ð¹I½ÝÍmÉ½Ý%¹‘•átì4(€€€€€€€€€€€Ù…ÈÉ½Ý9Õµ‰•È€ôÉ½Ý%¹‘•à€¬€Äì4(€€€€€€€€€€€Ù…È¡•¥¡Ð€ôI½Ý!•¥¡Ð¡Í¡••Ð°É½Ü¤ì4(€€€€€€€€€€€É½Ýaµ°¹ÁÁ•¹ ˆñÉ½ÜÈõp‰íÉ½Ý9Õµ‰•Éõpˆ¡Ðõp‰í¡•¥¡ÑõpˆÕÍÑ½µ!•¥¡ÐõpˆÅpˆøˆ¤ì4(€€€€€€€€€€€™½È€¡Ù…È½±Õµ¹%¹‘•à€ô€Àì½±Õµ¹%¹‘•à€ðÉ½Ü¹Y…±Õ•Ì¹½Õ¹Ðì½±Õµ¹%¹‘•à¬¬¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€Ù…È•±±I•™•É•¹”€ô€‰í½±Õµ¹9…µ”¡½±Õµ¹%¹‘•à¥õíÉ½Ý9Õµ‰•Éôˆì4(€€€€€€€€€€€€€€€Ù…ÈÙ…±Õ”€ôÉ½Ü¹Y…±Õ•Ím½±Õµ¹%¹‘•átì4(€€€€€€€€€€€€€€€¥˜€¡Ù…±Õ”¥Ì¹Õ±°ñðÙ…±Õ”¥ÌÍÑÉ¥¹œÑ•áÐ€˜˜Ñ•áÐ¹1•¹Ñ €ôô€À¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€É½Ýaµ°¹ÁÁ•¹ ˆñŒÈõp‰í•±±I•™•É•¹•õpˆÌõp‰íÉ½Ü¹MÑå±•õpˆ¼øˆ¤ì4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€¥˜€¡Ù…±Õ”¥Ì‰åÑ”½ÈÍ¡½ÉÐ½È¥¹Ð½È±½¹œ½È™±½…Ð½È‘½Õ‰±”½È‘•¥µ…°¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€É½Ýaµ°¹ÁÁ•¹ ˆñŒÈõp‰í•±±I•™•É•¹•õpˆÌõp‰íÉ½Ü¹MÑå±•õpˆÐõp‰¹pˆøñØùí½¹Ù•ÉÐ¹Q½MÑÉ¥¹œ¡Ù…±Õ”°Õ±ÑÕÉ•%¹™¼¹%¹Ù…É¥…¹ÑÕ±ÑÕÉ”¥ôð½Øøð½Œøˆ¤ì4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€É½Ýaµ°¹ÁÁ•¹ ˆñŒÈõp‰í•±±I•™•É•¹•õpˆÌõp‰íÉ½Ü¹MÑå±•õpˆÐõp‰¥¹±¥¹•MÑÉpˆøñ¥ÌøñÐáµ°éÍÁ…”õp‰ÁÉ•Í•ÉÙ•pˆùíÍ…Á•Q•áÐ¡½¹Ù•ÉÐ¹Q½MÑÉ¥¹œ¡Ù…±Õ”°Õ±ÑÕÉ•%¹™¼¹%¹Ù…É¥…¹ÑÕ±ÑÕÉ”¤€üüÍÑÉ¥¹œ¹µÁÑä¥ôð½Ðøð½¥Ìøð½Œøˆ¤ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€É½Ýaµ°¹ÁÁ•¹ ˆð½É½Üøˆ¤ì4(€€€€€€€ô4(4(€€€€€€€Ù…Èµ•É”€ôÍ¡••Ð¹I½ÝÌ¹½Õ¹Ð€ø€À€˜˜Í¡••Ð¹I½ÝÍlÁt¹Y…±Õ•Ì¹½Õ¹Ð€ø€Ä4(€€€€€€€€€€€€ü€ˆñµ•É••±±Ì½Õ¹ÐõpˆÅpˆøñµ•É••±°É•˜õp‰Äéí½±Õµ¹9…µ”¡µ…á½±Õµ¸€´€Ä¥ôÅpˆ¼øð½µ•É••±±Ìøˆ4(€€€€€€€€€€€€èÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€Ù…È™¥±Ñ•È€ôÍ¡••Ð¹ÕÑ½¥±Ñ•È€˜˜Í¡••Ð¹I½ÝÌ¹½Õ¹Ð€øôÍ¡••Ð¹!•…‘•ÉI½Ü4(€€€€€€€€€€€€ü€ˆñ…ÕÑ½¥±Ñ•ÈÉ•˜õp‰íÍ¡••Ð¹!•…‘•ÉI½Ýôéí½±Õµ¹9…µ”¡µ…á½±Õµ¸€´€Ä¥õíÍ¡••Ð¹I½ÝÌ¹½Õ¹Ñõpˆ¼øˆ4(€€€€€€€€€€€€èÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€Ù…ÈÁ…¹”€ôÍ¡••Ð¹!•…‘•ÉI½Ü€ø€À4(€€€€€€€€€€€€ü€ˆñÍ¡••ÑY¥•ÝÌøñÍ¡••ÑY¥•ÜÝ½É­‰½½­Y¥•Ý%õpˆÁpˆøñÁ…¹”åMÁ±¥Ðõp‰íÍ¡••Ð¹!•…‘•ÉI½ÝõpˆÑ½Á1•™Ñ•±°õp‰íÍ¡••Ð¹!•…‘•ÉI½Ü€¬€Åõpˆ…Ñ¥Ù•A…¹”õp‰‰½ÑÑ½µ1•™ÑpˆÍÑ…Ñ”õp‰™É½é•¹pˆ¼øð½Í¡••ÑY¥•Üøð½Í¡••ÑY¥•ÝÌøˆ4(€€€€€€€€€€€€è€ˆñÍ¡••ÑY¥•ÝÌøñÍ¡••ÑY¥•ÜÝ½É­‰½½­Y¥•Ý%õpˆÁpˆ¼øð½Í¡••ÑY¥•ÝÌøˆì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñÝ½É­Í¡••Ðáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½ÍÁÉ•…‘Í¡••Ñµ°¼ÈÀÀØ½µ…¥¹pˆøˆ€¬4(€€€€€€€€€€€€€€€ˆñ‘¥µ•¹Í¥½¸É•˜õp‰í‘¥µ•¹Í¥½¹õpˆ¼ùíÁ…¹•ôñÍ¡••Ñ½Éµ…ÑAÈ‘•™…Õ±ÑI½Ý!•¥¡ÐõpˆÄÕpˆ¼øñ½±Ìùí½±Õµ¹Íôð½½±Ìøˆ€¬4(€€€€€€€€€€€€€€€ˆñÍ¡••Ñ…Ñ„ùíÉ½Ýaµ±ôð½Í¡••Ñ…Ñ„ùí™¥±Ñ•Éõíµ•É•ôð½Ý½É­Í¡••Ðøˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”I½Ý!•¥¡Ð¡áÁ½ÉÑM¡••ÐÍ¡••Ð°áÁ½ÉÑI½ÜÉ½Ü¤4(€€€ì4(€€€€€€€¥˜€¡É½Ü¹MÑå±”€ôô€Ä¤É•ÑÕÉ¸€ÌÀì4(€€€€€€€¥˜€¡É½Ü¹MÑå±”€ôô€È¤É•ÑÕÉ¸€Èàì4(€€€€€€€¥˜€¡É½Ü¹MÑå±”€ôô€À¤É•ÑÕÉ¸€ÄÐì4(4(€€€€€€€Ù…ÈÉ•ÅÕ¥É•‘1¥¹•Ì€ô€Äì4(€€€€€€€™½È€¡Ù…È¥¹‘•à€ô€Àì¥¹‘•à€ðÉ½Ü¹Y…±Õ•Ì¹½Õ¹Ðì¥¹‘•à¬¬¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÑ•áÐ€ô½¹Ù•ÉÐ¹Q½MÑÉ¥¹œ¡É½Ü¹Y…±Õ•Ím¥¹‘•át°Õ±ÑÕÉ•%¹™¼¹%¹Ù…É¥…¹ÑÕ±ÑÕÉ”¤ì4(€€€€€€€€€€€¥˜€¡ÍÑÉ¥¹œ¹%Í9Õ±±=ÉµÁÑä¡Ñ•áÐ¤¤½¹Ñ¥¹Õ”ì4(€€€€€€€€€€€Ù…ÈÝ¥‘Ñ €ô¥¹‘•à€ðÍ¡••Ð¹½±Õµ¹]¥‘Ñ¡Ì¹1•¹Ñ €üÍ¡••Ð¹½±Õµ¹]¥‘Ñ¡Ím¥¹‘•át€è€ÄÈì4(€€€€€€€€€€€Ù…È¡…É…Ñ•ÉÍA•É1¥¹”€ô5…Ñ ¹5…à à°€¡¥¹Ð¥5…Ñ ¹±½½È¡Ý¥‘Ñ €´€È¤¤ì4(€€€€€€€€€€€Ù…È•ÍÑ¥µ…Ñ•‘1¥¹•Ì€ôÑ•áÐ¹I•Á±…” ‰qÈˆ°ÍÑÉ¥¹œ¹µÁÑä¤4(€€€€€€€€€€€€€€€€¹MÁ±¥Ð q¸œ¤4(€€€€€€€€€€€€€€€€¹MÕ´¡±¥¹”€ôø5…Ñ ¹5…à Ä°€¡¥¹Ð¥5…Ñ ¹•¥±¥¹œ ¡‘½Õ‰±”¥±¥¹”¹1•¹Ñ €¼¡…É…Ñ•ÉÍA•É1¥¹”¤¤¤ì4(€€€€€€€€€€€É•ÅÕ¥É•‘1¥¹•Ì€ô5…Ñ ¹5…à¡É•ÅÕ¥É•‘1¥¹•Ì°•ÍÑ¥µ…Ñ•‘1¥¹•Ì¤ì4(€€€€€€€ô4(€€€€€€€É•ÑÕÉ¸5…Ñ ¹5¥¸ ÄÈÀ°€ÈÈ€¬€¡É•ÅÕ¥É•‘1¥¹•Ì€´€Ä¤€¨€ÄÔ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œÁÁAÉ½Á•ÉÑ¥•Íaµ°¡%I•…‘=¹±å1¥ÍÐñáÁ½ÉÑM¡••ÐøÍ¡••ÑÌ¤4(€€€ì4(€€€€€€€Ù…ÈÑ¥Ñ±•Ì€ôÍÑÉ¥¹œ¹½¹…Ð¡Í¡••ÑÌ¹M•±•Ð¡Í¡••Ð€ôø€ˆñÙÐé±ÁÍÑÈùíÍ…Á•Q•áÐ¡Í¡••Ð¹9…µ”¥ôð½ÙÐé±ÁÍÑÈøˆ¤¤ì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñAÉ½Á•ÉÑ¥•Ìáµ±¹Ìõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½•áÑ•¹‘•µÁÉ½Á•ÉÑ¥•Ípˆáµ±¹ÌéÙÐõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½½™™¥•½Õµ•¹Ð¼ÈÀÀØ½‘½AÉ½ÁÍYQåÁ•Ípˆøˆ€¬4(€€€€€€€€€€€€€€€ˆñÁÁ±¥…Ñ¥½¸ù%¹9…ÍŒð½ÁÁ±¥…Ñ¥½¸øñ½M•ÕÉ¥ÑäøÀð½½M•ÕÉ¥ÑäøñM…±•É½Àù™…±Í”ð½M…±•É½Àøˆ€¬4(€€€€€€€€€€€€€€€ˆñ!•…‘¥¹A…¥ÉÌøñÙÐéÙ•Ñ½ÈÍ¥é”õpˆÉpˆ‰…Í•QåÁ”õp‰Ù…É¥…¹ÑpˆøñÙÐéÙ…É¥…¹ÐøñÙÐé±ÁÍÑÈù]½É­Í¡••ÑÌð½ÙÐé±ÁÍÑÈøð½ÙÐéÙ…É¥…¹ÐøñÙÐéÙ…É¥…¹ÐøñÙÐé¤ÐùíÍ¡••ÑÌ¹½Õ¹Ñôð½ÙÐé¤Ðøð½ÙÐéÙ…É¥…¹Ðøð½ÙÐéÙ•Ñ½Èøð½!•…‘¥¹A…¥ÉÌøˆ€¬4(€€€€€€€€€€€€€€€ˆñQ¥Ñ±•Í=™A…ÉÑÌøñÙÐéÙ•Ñ½ÈÍ¥é”õp‰íÍ¡••ÑÌ¹½Õ¹Ñõpˆ‰…Í•QåÁ”õp‰±ÁÍÑÉpˆùíÑ¥Ñ±•Íôð½ÙÐéÙ•Ñ½Èøð½Q¥Ñ±•Í=™A…ÉÑÌøˆ€¬4(€€€€€€€€€€€€€€€ˆñ½µÁ…¹äù%¹8à1…‰Ìð½½µÁ…¹äøñ1¥¹­ÍUÁQ½…Ñ”ù™…±Í”ð½1¥¹­ÍUÁQ½…Ñ”øñM¡…É•‘½Œù™…±Í”ð½M¡…É•‘½Œøñ!åÁ•É±¥¹­Í¡…¹•ù™…±Í”ð½!åÁ•É±¥¹­Í¡…¹•øñÁÁY•ÉÍ¥½¸øÄØ¸ÀÌÀÀð½ÁÁY•ÉÍ¥½¸øð½AÉ½Á•ÉÑ¥•Ìøˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ½É•AÉ½Á•ÉÑ¥•Íaµ°¡ÍÑÉ¥¹œÝ½É­‰½½­Q¥Ñ±”¤4(€€€ì4(€€€€€€€Ù…È¹½Ü€ô…Ñ•Q¥µ”¹UÑ9½Ü¹Q½MÑÉ¥¹œ ‰åååäµ54µ‘P! éµ´éÍÌhœˆ¤ì4(€€€€€€€É•ÑÕÉ¸€ˆðýáµ°Ù•ÉÍ¥½¸õpˆÄ¸Ápˆ•¹½‘¥¹œõp‰UQ´ápˆÍÑ…¹‘…±½¹”õp‰å•Ípˆüøˆ€¬4(€€€€€€€€€€€€€€€ˆñÀé½É•AÉ½Á•ÉÑ¥•Ìáµ±¹ÌéÀõp‰¡ÑÑÀè¼½Í¡•µ…Ì¹½Á•¹áµ±™½Éµ…ÑÌ¹½Éœ½Á…­…”¼ÈÀÀØ½µ•Ñ…‘…Ñ„½½É”µÁÉ½Á•ÉÑ¥•Ípˆáµ±¹Ìé‘Œõp‰¡ÑÑÀè¼½ÁÕÉ°¹½Éœ½‘Œ½•±•µ•¹ÑÌ¼Ä¸Ä½pˆáµ±¹Ìé‘Ñ•ÉµÌõp‰¡ÑÑÀè¼½ÁÕÉ°¹½Éœ½‘Œ½Ñ•ÉµÌ½pˆáµ±¹Ìé‘µ¥ÑåÁ”õp‰¡ÑÑÀè¼½ÁÕÉ°¹½Éœ½‘Œ½‘µ¥ÑåÁ”½pˆáµ±¹ÌéáÍ¤õp‰¡ÑÑÀè¼½ÝÝÜ¹ÜÌ¹½Éœ¼ÈÀÀÄ½a51M¡•µ„µ¥¹ÍÑ…¹•pˆøˆ€¬4(€€€€€€€€€€€€€€€ˆñ‘ŒéÑ¥Ñ±”ùíÍ…Á•Q•áÐ¡Ý½É­‰½½­Q¥Ñ±”¥ôð½‘ŒéÑ¥Ñ±”øñ‘ŒéÉ•…Ñ½Èù%¹8à1…‰Ìð½‘ŒéÉ•…Ñ½ÈøñÀé±…ÍÑ5½‘¥™¥•‘	äù%¹8à1…‰Ìð½Àé±…ÍÑ5½‘¥™¥•‘	äøñ‘Ñ•ÉµÌéÉ•…Ñ•áÍ¤éÑåÁ”õp‰‘Ñ•ÉµÌé\ÍQpˆùí¹½Ýôð½‘Ñ•ÉµÌéÉ•…Ñ•øñ‘Ñ•ÉµÌéµ½‘¥™¥•áÍ¤éÑåÁ”õp‰‘Ñ•ÉµÌé\ÍQpˆùí¹½Ýôð½‘Ñ•ÉµÌéµ½‘¥™¥•øð½Àé½É•AÉ½Á•ÉÑ¥•Ìøˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œÍ…Á•Q•áÐ¡ÍÑÉ¥¹œÙ…±Õ”¤€ôøMåÍÑ•´¹M•ÕÉ¥Ñä¹M•ÕÉ¥Ñå±•µ•¹Ð¹Í…Á”¡Ù…±Õ”¤€üüÍÑÉ¥¹œ¹µÁÑäì4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œÍ…Á•ÑÑÉ¥‰ÕÑ”¡ÍÑÉ¥¹œÙ…±Õ”¤€ôøÍ…Á•Q•áÐ¡Ù…±Õ”¤¹I•Á±…” ‰pˆˆ°€ˆ™ÅÕ½Ðìˆ¤ì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ½±Õµ¹9…µ”¡¥¹Ðé•É½	…Í•‘%¹‘•à¤4(€€€ì4(€€€€€€€Ù…ÈÉ•ÍÕ±Ð€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€Ù…È¥¹‘•à€ôé•É½	…Í•‘%¹‘•à€¬€Äì4(€€€€€€€Ý¡¥±”€¡¥¹‘•à€ø€À¤4(€€€€€€€ì4(€€€€€€€€€€€¥¹‘•à´´ì4(€€€€€€€€€€€É•ÍÕ±Ð€ô€¡¡…È¤ œ€¬¥¹‘•à€”€ÈØ¤€¬É•ÍÕ±Ðì4(€€€€€€€€€€€¥¹‘•à€¼ô€ÈØì4(€€€€€€€ô4(€€€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Í•…±•É•½É]½É­‰½½­M¡••Ð¡ÍÑÉ¥¹œ9…µ”°ÍÑÉ¥¹œA…Ñ ¤ì4(€€€ÁÉ¥Ù…Ñ”Í•…±•É•½É]½É­Í¡••ÑI½Ü¡¥¹ÐI½Ý9Õµ‰•È°¥Ñ¥½¹…Éäñ¥¹Ð°ÍÑÉ¥¹œøY…±Õ•Ì¤ì4(€€€ÁÉ¥Ù…Ñ”Í•…±•É•½ÉáÁ½ÉÑM¡••Ð¡ÍÑÉ¥¹œ9…µ”°1¥ÍÐñáÁ½ÉÑI½ÜøI½ÝÌ°‘½Õ‰±•mt½±Õµ¹]¥‘Ñ¡Ì°¥¹Ð!•…‘•ÉI½Ü°‰½½°ÕÑ½¥±Ñ•È¤ì4(€€€ÁÉ¥Ù…Ñ”Í•…±•É•½ÉáÁ½ÉÑI½Ü¡%I•…‘=¹±å1¥ÍÐñ½‰©•ÐüøY…±Õ•Ì°¥¹ÐMÑå±”¤4(€€€ì4(€€€€€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒáÁ½ÉÑI½ÜQ¥Ñ±”¡ÍÑÉ¥¹œÑ¥Ñ±”°¥¹Ð½±Õµ¹Ì¤€ôø¹•Ü 4(€€€€€€€€€€€¹•Ü½‰©•ÐýmtìÑ¥Ñ±”ô¹½¹…Ð¡¹Õµ•É…‰±”¹I•Á•…Ðñ½‰©•Ðüø¡ÍÑÉ¥¹œ¹µÁÑä°5…Ñ ¹5…à À°½±Õµ¹Ì€´€Ä¤¤¤¹Q½1¥ÍÐ ¤°€Ä¤ì4(€€€€€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒáÁ½ÉÑI½Ü!•…‘•È¡Á…É…µÌ½‰©•ÐýmtÙ…±Õ•Ì¤€ôø¹•Ü¡Ù…±Õ•Ì°€È¤ì4(€€€€€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒáÁ½ÉÑI½Ü	½‘ä¡Á…É…µÌ½‰©•ÐýmtÙ…±Õ•Ì¤€ôø¹•Ü¡Ù…±Õ•Ì°€Ì¤ì4(€€€€€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒáÁ½ÉÑI½Ü	±…¹¬¡¥¹Ð½±Õµ¹Ì¤€ôø¹•Ü¡¹Õµ•É…‰±”¹I•Á•…Ðñ½‰©•Ðüø¡ÍÑÉ¥¹œ¹µÁÑä°½±Õµ¹Ì¤¹Q½1¥ÍÐ ¤°€À¤ì4(€€€ô4)ô4
+                WriteText(archive, "xl/styles.xml", StylesXml());
+                for (var i = 0; i < sheets.Count; i++)
+                    WriteText(archive, $"xl/worksheets/sheet{i + 1}.xml", WorksheetXml(sheets[i]));
+            }
+            ValidateExport(temporary, sheets.Count, contexts.Count);
+            File.Move(temporary, filePath, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+        return contexts.Count;
+    }
+
+    private static IEnumerable<EquipmentContext> Flatten(IEnumerable<ClientRecord> clients)
+    {
+        foreach (var client in clients)
+        foreach (var location in client.Locations)
+        foreach (var room in location.Rooms)
+        foreach (var equipment in room.Equipment)
+            yield return new EquipmentContext(client, location, room, equipment);
+    }
+
+    private static ExportSheet BuildSummary(
+        IReadOnlyCollection<ClientRecord> clients,
+        IReadOnlyCollection<EquipmentContext> contexts,
+        string workbookTitle)
+    {
+        var rows = new List<ExportRow>
+        {
+            ExportRow.Title(workbookTitle, 7),
+            ExportRow.Header("Client", "Address", "Client Notes", "Locations", "Rooms", "Equipment")
+        };
+        foreach (var client in clients.OrderBy(client => client.Name))
+        {
+            rows.Add(ExportRow.Body(
+                client.Name,
+                client.Address,
+                client.Notes,
+                client.Locations.Count,
+                client.Locations.Sum(location => location.Rooms.Count),
+                contexts.Count(item => ReferenceEquals(item.Client, client))));
+        }
+
+        rows.Add(ExportRow.Blank(7));
+        rows.Add(ExportRow.Header(
+            "Client", "Location", "Location Address", "Room", "Equipment", "Location Notes", "Room Notes"));
+
+        foreach (var client in clients.OrderBy(client => client.Name))
+        foreach (var location in client.Locations.OrderBy(location => location.Name))
+        {
+            if (location.Rooms.Count == 0)
+            {
+                rows.Add(ExportRow.Body(client.Name, location.Name, location.Address, string.Empty, 0,
+                    location.Notes, string.Empty));
+                continue;
+            }
+
+            foreach (var room in location.Rooms.OrderBy(room => room.Name))
+                rows.Add(ExportRow.Body(client.Name, location.Name, location.Address, room.Name,
+                    room.Equipment.Count, location.Notes, room.Notes));
+        }
+
+        return new ExportSheet("Project Summary", rows, [24, 24, 28, 20, 14, 34, 34], 2, false);
+    }
+
+    private static void ValidateExport(string filePath, int sheetCount, int equipmentCount)
+    {
+        using var archive = ZipFile.OpenRead(filePath);
+        var requiredEntries = new List<string>
+        {
+            "[Content_Types].xml",
+            "_rels/.rels",
+            "xl/workbook.xml",
+            "xl/_rels/workbook.xml.rels",
+            "xl/styles.xml"
+        };
+        requiredEntries.AddRange(Enumerable.Range(1, sheetCount)
+            .Select(index => $"xl/worksheets/sheet{index}.xml"));
+        var missing = requiredEntries.FirstOrDefault(entry => archive.GetEntry(entry) is null);
+        if (missing is not null)
+            throw new InvalidDataException($"The Excel workbook is missing {missing}.");
+
+        var workbookEntry = archive.GetEntry("xl/workbook.xml")!;
+        using (var stream = workbookEntry.Open())
+        {
+            var workbook = XDocument.Load(stream);
+            var exportedSheets = workbook.Descendants(Spreadsheet + "sheet").Count();
+            if (exportedSheets != sheetCount)
+                throw new InvalidDataException(
+                    $"The workbook contains {exportedSheets:N0} sheets; {sheetCount:N0} were expected.");
+        }
+
+        var exportedEquipment = 0;
+        for (var index = 2; index <= sheetCount; index++)
+        {
+            var sheetEntry = archive.GetEntry($"xl/worksheets/sheet{index}.xml")!;
+            using var stream = sheetEntry.Open();
+            var sheet = XDocument.Load(stream);
+            exportedEquipment += Math.Max(0, sheet.Descendants(Spreadsheet + "row").Count() - 2);
+        }
+        if (exportedEquipment != equipmentCount)
+            throw new InvalidDataException(
+                $"The workbook contains {exportedEquipment:N0} equipment rows; {equipmentCount:N0} were expected.");
+    }
+
+    private static ExportSheet BuildLocationSheet(
+        ClientRecord client,
+        LocationRecord location,
+        string sheetName)
+    {
+        var rows = new List<ExportRow>
+        {
+            ExportRow.Title($"{client.Name} â€” {location.Name}", 14),
+            ExportRow.Header(
+                "Room", "Description", "Manufacturer", "Hostname", "Serial Number", "Firmware",
+                "Primary IP", "Secondary IPs", "MAC Addresses", "Subnet", "Gateway",
+                "User Name", "Password", "Notes")
+        };
+
+        foreach (var room in location.Rooms.OrderBy(room => room.Name))
+        foreach (var equipment in room.Equipment.OrderBy(equipment => equipment.Description)
+                     .ThenBy(equipment => equipment.Manufacturer)
+                     .ThenBy(equipment => equipment.Hostname))
+        {
+            equipment.EnsureNetworkInterfaces();
+            var interfaces = equipment.NetworkInterfaces.Where(networkInterface =>
+                !string.IsNullOrWhiteSpace(networkInterface.IpAddress) ||
+                !string.IsNullOrWhiteSpace(networkInterface.MacAddress)).ToList();
+            var primary = interfaces.FirstOrDefault(networkInterface =>
+                              networkInterface.Type == NetworkInterfaceType.Main &&
+                              !string.IsNullOrWhiteSpace(networkInterface.IpAddress))
+                          ?? interfaces.FirstOrDefault(networkInterface =>
+                              !string.IsNullOrWhiteSpace(networkInterface.IpAddress));
+            var secondaryIps = interfaces
+                .Where(networkInterface => !ReferenceEquals(networkInterface, primary) &&
+                                           !string.IsNullOrWhiteSpace(networkInterface.IpAddress))
+                .DistinctBy(networkInterface => networkInterface.IpAddress, StringComparer.OrdinalIgnoreCase)
+                .Select(networkInterface => $"{networkInterface.Type}: {networkInterface.IpAddress}");
+            var macAddresses = interfaces
+                .Where(networkInterface => !string.IsNullOrWhiteSpace(networkInterface.MacAddress))
+                .DistinctBy(networkInterface => networkInterface.MacAddress, StringComparer.OrdinalIgnoreCase)
+                .Select(networkInterface => string.IsNullOrWhiteSpace(networkInterface.IpAddress)
+                    ? $"{networkInterface.Type}: {networkInterface.MacAddress}"
+                    : $"{networkInterface.Type} ({networkInterface.IpAddress}): {networkInterface.MacAddress}");
+
+            rows.Add(ExportRow.Body(
+                room.Name,
+                equipment.Description,
+                equipment.Manufacturer,
+                equipment.Hostname,
+                equipment.SerialNumber,
+                equipment.Firmware,
+                primary?.IpAddress ?? string.Empty,
+                string.Join("\n", secondaryIps),
+                string.Join("\n", macAddresses),
+                equipment.Subnet,
+                equipment.Gateway,
+                equipment.Username,
+                equipment.Password,
+                equipment.Notes));
+        }
+        return new ExportSheet(sheetName, rows,
+            [18, 34, 20, 20, 20, 16, 18, 42, 48, 18, 18, 20, 20, 44], 2, true);
+    }
+
+    private static IReadOnlyList<string> ReadSharedStrings(ZipArchive archive)
+    {
+        var entry = archive.GetEntry("xl/sharedStrings.xml");
+        if (entry is null) return [];
+        using var stream = entry.Open();
+        var document = XDocument.Load(stream);
+        return document.Descendants(Spreadsheet + "si")
+            .Select(item => string.Concat(item.Descendants(Spreadsheet + "t").Select(text => text.Value)))
+            .ToList();
+    }
+
+    private static IReadOnlyList<WorkbookSheet> FindWorksheets(ZipArchive archive)
+    {
+        var workbookEntry = archive.GetEntry("xl/workbook.xml") ??
+                            throw new InvalidDataException("The workbook does not contain xl/workbook.xml.");
+        var relationshipsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels") ??
+                                 throw new InvalidDataException("The workbook relationship file is missing.");
+        XDocument workbook;
+        XDocument relationships;
+        using (var stream = workbookEntry.Open()) workbook = XDocument.Load(stream);
+        using (var stream = relationshipsEntry.Open()) relationships = XDocument.Load(stream);
+        var targets = relationships.Descendants(PackageRelationships + "Relationship")
+            .Where(item => ((string?)item.Attribute("Type"))?.EndsWith("/worksheet", StringComparison.Ordinal) == true)
+            .ToDictionary(item => (string)item.Attribute("Id")!, item => (string)item.Attribute("Target")!);
+
+        var result = new List<WorkbookSheet>();
+        foreach (var sheet in workbook.Descendants(Spreadsheet + "sheet"))
+        {
+            var relationshipId = (string?)sheet.Attribute(OfficeRelationships + "id");
+            if (relationshipId is null || !targets.TryGetValue(relationshipId, out var target)) continue;
+            var normalized = NormalizeWorkbookTarget(target);
+            result.Add(new WorkbookSheet((string?)sheet.Attribute("name") ?? "Sheet", normalized));
+        }
+        return result;
+    }
+
+    private static string NormalizeWorkbookTarget(string target)
+    {
+        var normalized = target.Replace('\\', '/').TrimStart('/');
+        var combined = normalized.StartsWith("xl/", StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : $"xl/{normalized}";
+        var segments = new List<string>();
+        foreach (var segment in combined.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment == "..")
+            {
+                if (segments.Count > 0) segments.RemoveAt(segments.Count - 1);
+                continue;
+            }
+            segments.Add(segment);
+        }
+        return string.Join("/", segments);
+    }
+
+    private static Dictionary<int, string> ReadRow(XElement row, IReadOnlyList<string> sharedStrings)
+    {
+        var values = new Dictionary<int, string>();
+        var fallbackColumn = 0;
+        foreach (var cell in row.Elements(Spreadsheet + "c"))
+        {
+            var reference = (string?)cell.Attribute("r");
+            var column = reference is null ? fallbackColumn : ColumnIndex(reference);
+            fallbackColumn = column + 1;
+            var type = (string?)cell.Attribute("t");
+            string value;
+            if (type == "inlineStr")
+                value = string.Concat(cell.Descendants(Spreadsheet + "t").Select(text => text.Value));
+            else
+            {
+                value = cell.Element(Spreadsheet + "v")?.Value ?? string.Empty;
+                if (type == "s" && int.TryParse(value, out var sharedIndex) &&
+                    sharedIndex >= 0 && sharedIndex < sharedStrings.Count)
+                    value = sharedStrings[sharedIndex];
+            }
+            values[column] = value;
+        }
+        return values;
+    }
+
+    private static int FindHeaderRow(IReadOnlyList<WorksheetRow> rows)
+    {
+        var bestIndex = -1;
+        var bestScore = 0;
+        for (var index = 0; index < Math.Min(rows.Count, 100); index++)
+        {
+            var score = HeaderMatchScore(rows[index].Values);
+            if (score <= bestScore) continue;
+            bestScore = score;
+            bestIndex = index;
+        }
+        return bestScore >= 2 ? bestIndex : -1;
+    }
+
+    private static int HeaderMatchScore(IReadOnlyDictionary<int, string> row)
+    {
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "description", "manufacturer", "make", "brand", "vendor",
+            "equipment type", "device type", "equipment", "device",
+            "part number", "part no", "part", "model", "model number", "model no",
+            "hostname", "host name", "device name", "network name",
+            "location", "room", "room name", "area", "space",
+            "mac address", "mac address main", "main mac", "mac address 1",
+            "ip address", "ip address main", "ip address new", "primary ip", "main ip",
+            "serial number", "serial no", "serial", "equipment id", "device id",
+            "asset id", "asset tag", "firmware", "firmware software version",
+            "username", "user name", "password", "notes"
+        };
+        return row.Values.Select(NormalizeHeader).Count(known.Contains);
+    }
+
+    private static int ColumnIndex(string cellReference)
+    {
+        var index = 0;
+        foreach (var character in cellReference)
+        {
+            if (!char.IsLetter(character)) break;
+            index = index * 26 + char.ToUpperInvariant(character) - 'A' + 1;
+        }
+        return Math.Max(0, index - 1);
+    }
+
+    private static string NormalizeHeader(string value)
+    {
+        var builder = new StringBuilder();
+        var lastWasSpace = false;
+        foreach (var character in value.Replace('\u00A0', ' ').Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(character);
+                lastWasSpace = false;
+            }
+            else if (!lastWasSpace)
+            {
+                builder.Append(' ');
+                lastWasSpace = true;
+            }
+        }
+        return builder.ToString().Trim();
+    }
+
+    private static string Clean(string value) => value.Replace('\u00A0', ' ').Trim();
+
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private static string PreviewRow(IReadOnlyDictionary<int, string> row)
+    {
+        var values = row.OrderBy(cell => cell.Key)
+            .Select(cell => Clean(cell.Value))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Take(4)
+            .ToList();
+        if (values.Count == 0) return "(empty row)";
+        var preview = string.Join(" | ", values);
+        return preview.Length <= 140 ? preview : preview[..137] + "â€¦";
+    }
+
+    private static void AddInvalidIpWarning(
+        ICollection<string> warnings,
+        string fieldName,
+        string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) &&
+            !Ipv4AddressText.TryParse(value, out _, out _))
+            warnings.Add($"{fieldName} '{value}' is not a valid IPv4 address.");
+    }
+
+    private static void AddInvalidMacWarning(
+        ICollection<string> warnings,
+        string fieldName,
+        string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) &&
+            !MacAddressText.TryParse(value, out _))
+            warnings.Add($"{fieldName} '{value}' is not a valid MAC address.");
+    }
+
+    private static string UniqueSheetName(string requestedName, ISet<string> usedNames)
+    {
+        var invalidCharacters = new HashSet<char>(['[', ']', ':', '*', '?', '/', '\\']);
+        var cleaned = new string(requestedName
+                .Select(character => invalidCharacters.Contains(character) ? ' ' : character)
+                .ToArray())
+            .Trim()
+            .Trim('\'')
+            .Trim();
+        cleaned = string.Join(" ", cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(cleaned)) cleaned = "Location";
+
+        var baseName = cleaned[..Math.Min(31, cleaned.Length)];
+        var candidate = baseName;
+        var suffixNumber = 2;
+        while (!usedNames.Add(candidate))
+        {
+            var suffix = $" ({suffixNumber++})";
+            candidate = baseName[..Math.Min(baseName.Length, 31 - suffix.Length)] + suffix;
+        }
+        return candidate;
+    }
+
+    private static string StatusText(NetworkState state) => state switch
+    {
+        NetworkState.Reachable => "Online",
+        NetworkState.Unreachable => "Offline",
+        NetworkState.NoAddress => "No IP",
+        NetworkState.Partial => "Partially online",
+        NetworkState.MacMismatch => "MAC mismatch",
+        _ => "Waiting to verify"
+    };
+
+    private static string LocalTime(DateTime? value) => value?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty;
+    private static string IpSortValue(string ip) => string.Join('.', ip.Split('.').Select(part =>
+        int.TryParse(part, out var value) ? value.ToString("D3") : part));
+
+    private static void WriteText(ZipArchive archive, string path, string content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(content);
+    }
+
+    private static string ContentTypesXml(int sheetCount)
+    {
+        var sheetOverrides = string.Concat(Enumerable.Range(1, sheetCount).Select(index =>
+            $"<Override PartName=\"/xl/worksheets/sheet{index}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"));
+        return $"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+               "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+               "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+               "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
+               "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>" +
+               "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>" +
+               "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>" +
+               sheetOverrides + "</Types>";
+    }
+
+    private static string PackageRelationshipsXml() =>
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+        "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
+        "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>" +
+        "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>" +
+        "</Relationships>";
+
+    private static string WorkbookXml(IReadOnlyList<ExportSheet> sheets)
+    {
+        var sheetXml = string.Concat(sheets.Select((sheet, index) =>
+            $"<sheet name=\"{EscapeAttribute(sheet.Name)}\" sheetId=\"{index + 1}\" r:id=\"rId{index + 1}\"/>"));
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
+               $"<sheets>{sheetXml}</sheets></workbook>";
+    }
+
+    private static string WorkbookRelationshipsXml(int sheetCount)
+    {
+        var relationships = string.Concat(Enumerable.Range(1, sheetCount).Select(index =>
+            $"<Relationship Id=\"rId{index}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{index}.xml\"/>"));
+        relationships += $"<Relationship Id=\"rId{sheetCount + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>";
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               $"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{relationships}</Relationships>";
+    }
+
+    private static string StylesXml() =>
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+        "<fonts count=\"3\">" +
+        "<font><sz val=\"10\"/><name val=\"Aptos\"/><family val=\"2\"/></font>" +
+        "<font><b/><color rgb=\"FFFFFFFF\"/><sz val=\"16\"/><name val=\"Aptos Display\"/></font>" +
+        "<font><b/><color rgb=\"FFFFFFFF\"/><sz val=\"10\"/><name val=\"Aptos\"/></font>" +
+        "</fonts>" +
+        "<fills count=\"4\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF0F172A\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF2563EB\"/><bgColor indexed=\"64\"/></patternFill></fill></fills>" +
+        "<borders count=\"2\"><border><left/><right/><top/><bottom/><diagonal/></border>" +
+        "<border><left style=\"thin\"><color rgb=\"FFDDE3EC\"/></left><right style=\"thin\"><color rgb=\"FFDDE3EC\"/></right>" +
+        "<top style=\"thin\"><color rgb=\"FFDDE3EC\"/></top><bottom style=\"thin\"><color rgb=\"FFDDE3EC\"/></bottom><diagonal/></border></borders>" +
+        "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
+        "<cellXfs count=\"4\">" +
+        "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
+        "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"><alignment vertical=\"center\"/></xf>" +
+        "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\"><alignment vertical=\"center\" wrapText=\"1\"/></xf>" +
+        "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\"><alignment vertical=\"top\" wrapText=\"1\"/></xf>" +
+        "</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
+        "</styleSheet>";
+
+    private static string WorksheetXml(ExportSheet sheet)
+    {
+        var maxColumn = Math.Max(1, sheet.Rows.Max(row => row.Values.Count));
+        var dimension = $"A1:{ColumnName(maxColumn - 1)}{Math.Max(1, sheet.Rows.Count)}";
+        var columns = string.Concat(sheet.ColumnWidths.Select((width, index) =>
+            $"<col min=\"{index + 1}\" max=\"{index + 1}\" width=\"{width.ToString(CultureInfo.InvariantCulture)}\" customWidth=\"1\"/>"));
+        var rowXml = new StringBuilder();
+        for (var rowIndex = 0; rowIndex < sheet.Rows.Count; rowIndex++)
+        {
+            var row = sheet.Rows[rowIndex];
+            var rowNumber = rowIndex + 1;
+            var height = RowHeight(sheet, row);
+            rowXml.Append($"<row r=\"{rowNumber}\" ht=\"{height}\" customHeight=\"1\">");
+            for (var columnIndex = 0; columnIndex < row.Values.Count; columnIndex++)
+            {
+                var cellReference = $"{ColumnName(columnIndex)}{rowNumber}";
+                var value = row.Values[columnIndex];
+                if (value is null || value is string text && text.Length == 0)
+                {
+                    rowXml.Append($"<c r=\"{cellReference}\" s=\"{row.Style}\"/>");
+                    continue;
+                }
+                if (value is byte or short or int or long or float or double or decimal)
+                {
+                    rowXml.Append($"<c r=\"{cellReference}\" s=\"{row.Style}\" t=\"n\"><v>{Convert.ToString(value, CultureInfo.InvariantCulture)}</v></c>");
+                    continue;
+                }
+                rowXml.Append($"<c r=\"{cellReference}\" s=\"{row.Style}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{EscapeText(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty)}</t></is></c>");
+            }
+            rowXml.Append("</row>");
+        }
+
+        var merge = sheet.Rows.Count > 0 && sheet.Rows[0].Values.Count > 1
+            ? $"<mergeCells count=\"1\"><mergeCell ref=\"A1:{ColumnName(maxColumn - 1)}1\"/></mergeCells>"
+            : string.Empty;
+        var filter = sheet.AutoFilter && sheet.Rows.Count >= sheet.HeaderRow
+            ? $"<autoFilter ref=\"A{sheet.HeaderRow}:{ColumnName(maxColumn - 1)}{sheet.Rows.Count}\"/>"
+            : string.Empty;
+        var pane = sheet.HeaderRow > 0
+            ? $"<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"{sheet.HeaderRow}\" topLeftCell=\"A{sheet.HeaderRow + 1}\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>"
+            : "<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>";
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+               $"<dimension ref=\"{dimension}\"/>{pane}<sheetFormatPr defaultRowHeight=\"15\"/><cols>{columns}</cols>" +
+               $"<sheetData>{rowXml}</sheetData>{filter}{merge}</worksheet>";
+    }
+
+    private static double RowHeight(ExportSheet sheet, ExportRow row)
+    {
+        if (row.Style == 1) return 30;
+        if (row.Style == 2) return 28;
+        if (row.Style == 0) return 14;
+
+        var requiredLines = 1;
+        for (var index = 0; index < row.Values.Count; index++)
+        {
+            var text = Convert.ToString(row.Values[index], CultureInfo.InvariantCulture);
+            if (string.IsNullOrEmpty(text)) continue;
+            var width = index < sheet.ColumnWidths.Length ? sheet.ColumnWidths[index] : 12;
+            var charactersPerLine = Math.Max(8, (int)Math.Floor(width - 2));
+            var estimatedLines = text.Replace("\r", string.Empty)
+                .Split('\n')
+                .Sum(line => Math.Max(1, (int)Math.Ceiling((double)line.Length / charactersPerLine)));
+            requiredLines = Math.Max(requiredLines, estimatedLines);
+        }
+        return Math.Min(120, 22 + (requiredLines - 1) * 15);
+    }
+
+    private static string AppPropertiesXml(IReadOnlyList<ExportSheet> sheets)
+    {
+        var titles = string.Concat(sheets.Select(sheet => $"<vt:lpstr>{EscapeText(sheet.Name)}</vt:lpstr>"));
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
+               "<Application>InNasc</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop>" +
+               $"<HeadingPairs><vt:vector size=\"2\" baseType=\"variant\"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>{sheets.Count}</vt:i4></vt:variant></vt:vector></HeadingPairs>" +
+               $"<TitlesOfParts><vt:vector size=\"{sheets.Count}\" baseType=\"lpstr\">{titles}</vt:vector></TitlesOfParts>" +
+               "<Company>InN8 Labs</Company><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0300</AppVersion></Properties>";
+    }
+
+    private static string CorePropertiesXml(string workbookTitle)
+    {
+        var now = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+               "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">" +
+               $"<dc:title>{EscapeText(workbookTitle)}</dc:title><dc:creator>InN8 Labs</dc:creator><cp:lastModifiedBy>InN8 Labs</cp:lastModifiedBy><dcterms:created xsi:type=\"dcterms:W3CDTF\">{now}</dcterms:created><dcterms:modified xsi:type=\"dcterms:W3CDTF\">{now}</dcterms:modified></cp:coreProperties>";
+    }
+
+    private static string EscapeText(string value) => System.Security.SecurityElement.Escape(value) ?? string.Empty;
+    private static string EscapeAttribute(string value) => EscapeText(value).Replace("\"", "&quot;");
+
+    private static string ColumnName(int zeroBasedIndex)
+    {
+        var result = string.Empty;
+        var index = zeroBasedIndex + 1;
+        while (index > 0)
+        {
+            index--;
+            result = (char)('A' + index % 26) + result;
+            index /= 26;
+        }
+        return result;
+    }
+
+    private sealed record WorkbookSheet(string Name, string Path);
+    private sealed record WorksheetRow(int RowNumber, Dictionary<int, string> Values);
+    private sealed record ExportSheet(string Name, List<ExportRow> Rows, double[] ColumnWidths, int HeaderRow, bool AutoFilter);
+    private sealed record ExportRow(IReadOnlyList<object?> Values, int Style)
+    {
+        public static ExportRow Title(string title, int columns) => new(
+            new object?[] { title }.Concat(Enumerable.Repeat<object?>(string.Empty, Math.Max(0, columns - 1))).ToList(), 1);
+        public static ExportRow Header(params object?[] values) => new(values, 2);
+        public static ExportRow Body(params object?[] values) => new(values, 3);
+        public static ExportRow Blank(int columns) => new(Enumerable.Repeat<object?>(string.Empty, columns).ToList(), 0);
+    }
+}
