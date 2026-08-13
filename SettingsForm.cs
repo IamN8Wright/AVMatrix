@@ -196,6 +196,17 @@ internal sealed class SettingsForm : Form
         import.Click += ImportData_Click;
         panel.Controls.Add(import);
 
+        var github = UiTheme.SecondaryButton("GitHub Master storage…");
+        github.AutoSize = false;
+        github.Size = new Size(180, 36);
+        github.Location = new Point(398, 92);
+        github.Click += (_, _) =>
+        {
+            using var form = new GitHubMasterStorageForm(_data, new DataStore());
+            form.ShowDialog(this);
+        };
+        panel.Controls.Add(github);
+
         _transferStatus.AutoEllipsis = true;
         _transferStatus.Font = UiTheme.Font(8.7f);
         _transferStatus.ForeColor = UiTheme.Muted;
