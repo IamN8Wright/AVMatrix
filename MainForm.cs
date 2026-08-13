@@ -74,7 +74,7 @@ public sealed class MainForm : Form
         _data = data;
         _store = store;
         UiTheme.SetDarkMode(_data.Settings.DarkMode);
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         WindowState = FormWindowState.Maximized;
         MinimumSize = new Size(1120, 720);
         BackColor = UiTheme.Canvas;
@@ -144,7 +144,10 @@ public sealed class MainForm : Form
         LoadNetworkAdapters();
         RefreshManufacturerFilter();
         RefreshGrid();
-        ShowMasterWelcomePage();
+        if (MasterSessionContext.Current is null)
+            ShowMasterWelcomePage();
+        else
+            ShowWelcomePage();
         RefreshSyncIndicator();
         MasterSessionContext.Changed += MasterSessionContext_Changed;
         RefreshMasterSessionUi();
@@ -185,7 +188,7 @@ public sealed class MainForm : Form
         });
         brand.Controls.Add(new Label
         {
-            Text = "AV Matrix Studio",
+            Text = "InNasc",
             AutoSize = false,
             ForeColor = Color.White,
             Font = UiTheme.Font(13, FontStyle.Bold),
@@ -196,7 +199,7 @@ public sealed class MainForm : Form
         });
         brand.Controls.Add(new Label
         {
-            Text = "Network inventory",
+            Text = "Systems in context.",
             AutoSize = false,
             ForeColor = Color.FromArgb(148, 163, 184),
             Font = UiTheme.Font(8.5f),
@@ -246,7 +249,7 @@ public sealed class MainForm : Form
         _aboutButton.Size = new Size(42, 40);
         _aboutButton.Margin = Padding.Empty;
         _aboutButton.Click += (_, _) => ShowAboutPage();
-        _toolTip.SetToolTip(_aboutButton, "About AV Matrix Studio");
+        _toolTip.SetToolTip(_aboutButton, "About InNasc");
 
         navigation.Controls.AddRange(
             [_homeButton, _scannerButton, _syncButton, _settingsButton, _aboutButton]);
@@ -341,7 +344,7 @@ public sealed class MainForm : Form
         var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         top.Controls.Add(new Label
         {
-            Text = "Welcome to AV Matrix Studio",
+            Text = "Welcome to InNasc",
             AutoSize = true,
             ForeColor = UiTheme.Text,
             Font = UiTheme.Font(20, FontStyle.Bold),
@@ -363,7 +366,7 @@ public sealed class MainForm : Form
         var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         top.Controls.Add(new Label
         {
-            Text = "About AV Matrix Studio",
+            Text = "About InNasc",
             AutoSize = true,
             ForeColor = UiTheme.Text,
             Font = UiTheme.Font(16, FontStyle.Bold),
@@ -1085,8 +1088,8 @@ public sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Choose AV Matrix Master File",
-            Filter = "AV Matrix files (*.avmatrix)|*.avmatrix|All files (*.*)|*.*"
+            Title = "Choose InNasc Master File",
+            Filter = "InNasc files (*.avmatrix)|*.avmatrix|All files (*.*)|*.*"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
@@ -1127,8 +1130,8 @@ public sealed class MainForm : Form
     {
         using var dialog = new SaveFileDialog
         {
-            Title = "Create AV Matrix Master File",
-            Filter = "AV Matrix files (*.avmatrix)|*.avmatrix",
+            Title = "Create InNasc Master File",
+            Filter = "InNasc files (*.avmatrix)|*.avmatrix",
             DefaultExt = "avmatrix",
             AddExtension = true,
             FileName = "AV-Matrix-Shared-Master.avmatrix",
@@ -1341,7 +1344,7 @@ public sealed class MainForm : Form
         _aboutPage.BringToFront();
         _aboutTopBar.BringToFront();
         _aboutBackButton.Visible = MasterSessionContext.Current is null;
-        _statusLabel.Text = $"AV Matrix Studio revision {AppInfo.Revision}";
+        _statusLabel.Text = $"InNasc revision {AppInfo.Revision}";
     }
 
     private async Task UpdateAppAsync()
@@ -1366,7 +1369,7 @@ public sealed class MainForm : Form
         {
             MessageBox.Show(this,
                 $"The update could not be downloaded or verified.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -1381,7 +1384,7 @@ public sealed class MainForm : Form
         {
             AppUpdateService.Discard(candidate);
             MessageBox.Show(this,
-                $"AV Matrix Studio {AppInfo.Revision} is already current.\r\n\r\n" +
+                $"InNasc {AppInfo.Revision} is already current.\r\n\r\n" +
                 $"Published release: {candidate.Version}",
                 "No update needed",
                 MessageBoxButtons.OK,
@@ -1390,7 +1393,7 @@ public sealed class MainForm : Form
         }
 
         var install = MessageBox.Show(this,
-            $"AV Matrix Studio {candidate.Version} is ready to install.\r\n\r\n" +
+            $"InNasc {candidate.Version} is ready to install.\r\n\r\n" +
             $"Verified SHA-256: {candidate.Sha256[..16]}…\r\n\r\n" +
             "The app will close, keep a rollback copy, install the update, and reopen. Install now?",
             "Install verified update",
@@ -1413,7 +1416,7 @@ public sealed class MainForm : Form
             AppUpdateService.Discard(candidate);
             MessageBox.Show(this,
                 $"The update could not be started.\r\n\r\n{exception.Message}",
-                "Update AV Matrix Studio",
+                "Update InNasc",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -1464,7 +1467,7 @@ public sealed class MainForm : Form
         var previousDarkMode = _data.Settings.DarkMode;
         using var settings = new SettingsForm(_data, _store.DataPath);
         if (settings.ShowDialog(this) != DialogResult.OK) return;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         TrySave();
         if (previousDarkMode != _data.Settings.DarkMode)
         {
@@ -1500,7 +1503,7 @@ public sealed class MainForm : Form
         if (!sync.DataPulled) return;
 
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
@@ -1518,7 +1521,7 @@ public sealed class MainForm : Form
         if (!sync.DataPulled) return;
 
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
@@ -1720,7 +1723,7 @@ public sealed class MainForm : Form
     private void RefreshAfterSharedDataChange()
     {
         _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "AV Matrix Studio" : _data.ProjectName;
+        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
         ResetVerificationStates();
         RefreshTree();
         RefreshManufacturerFilter();
@@ -1775,7 +1778,7 @@ public sealed class MainForm : Form
     {
         var activeClientId = _activeClient?.Id;
         Text = string.IsNullOrWhiteSpace(_data.ProjectName)
-            ? "AV Matrix Studio"
+            ? "InNasc"
             : _data.ProjectName;
         ResetVerificationStates();
         _welcomePage.RefreshClients();

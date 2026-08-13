@@ -88,7 +88,7 @@ internal sealed class MasterWelcomeControl : UserControl
 
         heading.Controls.Add(new Label
         {
-            Text = "Welcome to AV Matrix Studio",
+            Text = "Welcome to InNasc",
             Dock = DockStyle.Fill,
             Font = UiTheme.Font(50, FontStyle.Bold),
             ForeColor = UiTheme.Text,

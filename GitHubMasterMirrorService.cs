@@ -45,7 +45,7 @@ internal static class GitHubMasterMirrorService
                 options,
                 files,
                 existing.CommitSha,
-                $"Mirror AV Matrix Master for {displayName}",
+                $"Mirror InNasc Master for {displayName}",
                 cancellationToken);
             commitSha = committed.CommitSha;
         }
@@ -68,7 +68,7 @@ internal static class GitHubMasterMirrorService
                     options,
                     payloadFiles,
                     created.CommitSha,
-                    $"Mirror AV Matrix client payloads for {displayName}",
+                    $"Mirror InNasc client payloads for {displayName}",
                     cancellationToken);
                 commitSha = committed.CommitSha;
             }

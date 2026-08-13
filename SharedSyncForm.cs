@@ -276,8 +276,8 @@ internal sealed class SharedSyncForm : Form
         }
         using var dialog = new OpenFileDialog
         {
-            Title = "Link an AV Matrix Studio shared master",
-            Filter = "AV Matrix Studio master (*.avmatrix)|*.avmatrix",
+            Title = "Link an InNasc shared master",
+            Filter = "InNasc master (*.nasc)|*.nasc",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -317,11 +317,11 @@ internal sealed class SharedSyncForm : Form
         }
         using var dialog = new SaveFileDialog
         {
-            Title = "Create an AV Matrix Studio shared master",
-            Filter = "AV Matrix Studio master (*.avmatrix)|*.avmatrix",
-            DefaultExt = "avmatrix",
+            Title = "Create an InNasc shared master",
+            Filter = "InNasc master (*.nasc)|*.nasc",
+            DefaultExt = "nasc",
             AddExtension = true,
-            FileName = "AV-Matrix-Shared-Master.avmatrix"
+            FileName = "AV-Matrix-Shared-Master.nasc"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         var owner = MasterOwnerSetupForm.Prompt(this);
@@ -369,7 +369,7 @@ internal sealed class SharedSyncForm : Form
             var session = EnsureSession(snapshot.Contents.Data.MasterAccess, password);
             if (session is null && snapshot.Contents.Data.MasterAccess.IsConfigured) return;
             var savedBy = string.IsNullOrWhiteSpace(snapshot.Contents.SavedBy)
-                ? "an earlier AV Matrix Studio revision"
+                ? "an earlier InNasc revision"
                 : snapshot.Contents.SavedBy;
             if (MessageBox.Show(this,
                     $"Pull revision saved by {savedBy}?\r\n\r\n" +

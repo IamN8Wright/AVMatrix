@@ -271,7 +271,7 @@ internal sealed class GitHubMasterStorageForm : Form
             GitHubMasterStorageConfigStore.Save(_store, _configuration);
             RefreshCredentialState();
             if (showStatus)
-                _status.Text = "GitHub Master Matrix storage settings saved on this PC. The access token is stored in Windows Credential Manager, not in AV Matrix data files.";
+                _status.Text = "GitHub Master Matrix storage settings saved on this PC. The access token is stored in Windows Credential Manager, not in InNasc data files.";
             return true;
         }
         catch (Exception exception)

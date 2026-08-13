@@ -6,7 +6,7 @@ namespace AVMatrixStudio;
 public sealed class AppData
 {
     public int SchemaVersion { get; set; } = 6;
-    public string ProjectName { get; set; } = "AV Matrix Studio";
+    public string ProjectName { get; set; } = "InNasc";
     public List<ClientRecord> Clients { get; set; } = [];
     public MasterAccessControl MasterAccess { get; set; } = new();
     public AppSettings Settings { get; set; } = new();

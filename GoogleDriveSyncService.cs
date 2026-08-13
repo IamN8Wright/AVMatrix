@@ -26,14 +26,17 @@ internal static class GoogleDriveSyncService
             data.Settings.GoogleDriveFileId = previousId;
             throw;
         }
-        if (!metadata.CanEdit || !metadata.Name.EndsWith(".avmatrix", StringComparison.OrdinalIgnoreCase))
+        if (!metadata.CanEdit ||
+            !(metadata.Name.EndsWith(".nasc", StringComparison.OrdinalIgnoreCase) ||
+              metadata.Name.EndsWith(".nasc", StringComparison.OrdinalIgnoreCase)))
         {
             data.Settings.GoogleDriveShareLink = previousLink;
             data.Settings.GoogleDriveFileId = previousId;
             if (!metadata.CanEdit)
                 throw new InvalidOperationException(
                     "The signed-in Google account does not have edit access to this Drive file.");
-            throw new InvalidDataException("The linked Google Drive file must use the .avmatrix extension.");
+            throw new InvalidDataException(
+                "The linked Google Drive company file must use .nasc. Legacy .avmatrix files remain readable for migration.");
         }
         data.Settings.GoogleDriveFingerprint = string.Empty;
         data.Settings.GoogleDriveLocalContentFingerprint = string.Empty;
@@ -92,7 +95,7 @@ internal static class GoogleDriveSyncService
         var expectedFingerprint = data.Settings.GoogleDriveFingerprint;
         if (string.IsNullOrWhiteSpace(expectedFingerprint))
             throw new SharedMasterConflictException(
-                "Pull the Google Drive master before your first push. This prevents overwriting existing work.");
+                "Pull the Google Drive company file before your first push. This prevents overwriting existing work.");
 
         string recoveryPath = string.Empty;
         for (var attempt = 0; attempt < 3; attempt++)
@@ -162,7 +165,7 @@ internal static class GoogleDriveSyncService
         }
 
         throw new SharedMasterConflictException(
-            "The Google Drive master kept changing while the merge was being uploaded. " +
+            "The Google Drive company file kept changing while the merge was being uploaded. " +
             "No unverified overwrite was accepted. Wait a moment and try Merge & push again.");
     }
 
@@ -219,13 +222,13 @@ internal static class GoogleDriveSyncService
                 Fingerprint(latest.Contents), remoteFingerprint,
                 StringComparison.OrdinalIgnoreCase))
             throw new SharedMasterConflictException(
-                "The Google Drive master changed while accounts were being updated. Refresh and try again.");
+                "The Google Drive company file changed while accounts were being updated. Refresh and try again.");
         await GoogleDriveService.UploadAsync(data.Settings, bytes, cancellationToken);
         var saved = await GoogleDriveService.DownloadAsync(data.Settings, cancellationToken);
         var savedFingerprint = Fingerprint(saved.Contents);
         if (!string.Equals(savedFingerprint, Fingerprint(bytes), StringComparison.OrdinalIgnoreCase))
             throw new SharedMasterConflictException(
-                "The Google Drive master changed immediately after the account update. Refresh before continuing.");
+                "The Google Drive company file changed immediately after the account update. Refresh before continuing.");
         data.MasterAccess = MasterAccessService.Clone(accessToSave);
         data.Settings.GoogleDriveFingerprint = savedFingerprint;
         data.Settings.GoogleDriveRemoteChangesDetected = false;
@@ -566,7 +569,7 @@ internal static class GoogleDriveSyncService
         var directory = Path.Combine(store.DataDirectory, "SharedSyncBackups");
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory,
-            $"Before-Google-Pull-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.avmatrix");
+            $"Before-Google-Pull-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.nasc");
         PortableDataService.Export(path, data, password);
         return path;
     }
@@ -585,7 +588,7 @@ internal static class GoogleDriveSyncService
                 Fingerprint(latest.Contents), expectedFingerprint,
                 StringComparison.OrdinalIgnoreCase))
             throw new SharedMasterConflictException(
-                "The Google Drive master changed during this checkout operation. Refresh and try again.");
+                "The Google Drive company file changed during this checkout operation. Refresh and try again.");
         await GoogleDriveService.UploadAsync(settings, bytes, cancellationToken);
         var saved = await GoogleDriveService.DownloadAsync(settings, cancellationToken);
         var savedFingerprint = Fingerprint(saved.Contents);
@@ -617,7 +620,7 @@ internal static class GoogleDriveSyncService
         var directory = Path.Combine(store.DataDirectory, "SharedSyncBackups");
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory,
-            $"Before-Google-Merge-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.avmatrix");
+            $"Before-Google-Merge-{DateTime.Now:yyyy-MM-dd-HHmmss-fff}.nasc");
         File.WriteAllBytes(path, contents);
         return path;
     }

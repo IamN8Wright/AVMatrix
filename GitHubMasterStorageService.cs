@@ -82,7 +82,7 @@ internal static class GitHubMasterStorageService
         var root = document.RootElement;
         if (!root.TryGetProperty("private", out var isPrivate) || isPrivate.ValueKind != JsonValueKind.True)
             throw new InvalidOperationException(
-                "AV Matrix Master Matrix storage must use a private GitHub repository.");
+                "InNasc Master Matrix storage must use a private GitHub repository.");
 
         _ = await GetHeadAsync(http, options, cancellationToken);
     }
@@ -188,7 +188,7 @@ internal static class GitHubMasterStorageService
                 [MasterPath(options)] = masterContents
             },
             head.CommitSha,
-            $"Create AV Matrix Master for {displayName.Trim()}",
+            $"Create InNasc Master for {displayName.Trim()}",
             cancellationToken);
     }
 
@@ -250,7 +250,7 @@ internal static class GitHubMasterStorageService
             !string.Equals(head.CommitSha, expectedCommitSha.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new GitHubStorageConflictException(
                 "The GitHub Master Matrix changed after this PC downloaded it. " +
-                "Refresh and run the normal AV Matrix merge before trying to push again.");
+                "Refresh and run the normal InNasc merge before trying to push again.");
 
         var entries = new List<object>();
         foreach (var file in files)
@@ -290,7 +290,7 @@ internal static class GitHubMasterStorageService
         if (updateResponse.StatusCode == HttpStatusCode.UnprocessableEntity ||
             updateResponse.StatusCode == HttpStatusCode.Conflict)
             throw new GitHubStorageConflictException(
-                "Another AV Matrix user updated the GitHub Master Matrix at the same time. " +
+                "Another InNasc user updated the GitHub Master Matrix at the same time. " +
                 "No overwrite was forced. Refresh, merge, and try again.");
         _ = await EnsureJsonSuccessAsync(updateResponse, "publishing the GitHub Master Matrix commit", cancellationToken);
 

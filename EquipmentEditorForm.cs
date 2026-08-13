@@ -402,7 +402,7 @@ internal sealed class EquipmentEditorForm : Form
                         $"'{info.Name}' is larger than the 250 MB per-file safety limit.");
                 if (info.Length > 50L * 1024 * 1024 &&
                     MessageBox.Show(this,
-                        $"{info.Name} is {FormatSize(info.Length)} and will make the AV Matrix considerably larger.\r\n\r\nAttach it anyway?",
+                        $"{info.Name} is {FormatSize(info.Length)} and will make the InNasc considerably larger.\r\n\r\nAttach it anyway?",
                         "Large configuration file",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Warning,

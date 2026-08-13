@@ -16,7 +16,7 @@ internal sealed class PasswordDialog : Form
     private PasswordDialog(bool creating, bool allowUnprotected, bool allowRemember)
     {
         _creating = creating;
-        Text = creating ? "Protect AV Matrix file" : "Unlock AV Matrix file";
+        Text = creating ? "Protect InNasc file" : "Unlock InNasc file";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;

@@ -55,7 +55,7 @@ internal sealed class ClientCheckoutProgressForm : Form
         });
         Controls.Add(new Label
         {
-            Text = "Please keep AV Matrix Studio open until this finishes.",
+            Text = "Please keep InNasc open until this finishes.",
             AutoSize = false,
             Font = UiTheme.Font(8.5f),
             ForeColor = UiTheme.Muted,
