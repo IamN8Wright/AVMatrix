@@ -14,13 +14,18 @@ public sealed class DataStore
 
     public string DataDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "InNasc");
+
+    public string LegacyDataDirectory { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AVMatrixStudio");
 
-    public string DataPath => Path.Combine(DataDirectory, "av-matrix-data.json");
-    public string BackupPath => Path.Combine(DataDirectory, "av-matrix-data.backup.json");
+    public string DataPath => Path.Combine(DataDirectory, "innasc-data.json");
+    public string BackupPath => Path.Combine(DataDirectory, "innasc-data.backup.json");
 
     public AppData Load()
     {
+        MigrateLegacyLocalData();
         Directory.CreateDirectory(DataDirectory);
         if (!File.Exists(DataPath)) return CreateInitialData();
 
@@ -49,7 +54,6 @@ public sealed class DataStore
                     // Fall through to a safe new data set.
                 }
             }
-
             return CreateInitialData();
         }
     }
@@ -59,25 +63,40 @@ public sealed class DataStore
         Directory.CreateDirectory(DataDirectory);
         Normalize(data);
         var json = JsonSerializer.Serialize(data, _options);
-        var temporaryPath = Path.Combine(DataDirectory, $"av-matrix-data.{Guid.NewGuid():N}.tmp");
+        var temporaryPath = Path.Combine(DataDirectory, $"innasc-data.{Guid.NewGuid():N}.tmp");
         File.WriteAllText(temporaryPath, json);
-
         if (File.Exists(DataPath)) File.Copy(DataPath, BackupPath, true);
         File.Move(temporaryPath, DataPath, true);
     }
 
-    private static AppData CreateInitialData()
+    private static AppData CreateInitialData() => new()
     {
-        var room = new RoomRecord { Name = "Room 1" };
-        var location = new LocationRecord { Name = "Main Location", Rooms = [room] };
-        var client = new ClientRecord { Name = "New Client", Locations = [location] };
-        return new AppData { Clients = [client] };
+        ProjectName = "InNasc",
+        Clients = []
+    };
+
+    private void MigrateLegacyLocalData()
+    {
+        if (File.Exists(DataPath) || !Directory.Exists(LegacyDataDirectory)) return;
+        Directory.CreateDirectory(DataDirectory);
+        foreach (var source in Directory.EnumerateFiles(LegacyDataDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(LegacyDataDirectory, source);
+            var destination = Path.Combine(DataDirectory, relative);
+            var directory = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+            if (!File.Exists(destination)) File.Copy(source, destination);
+        }
+        var legacyData = Path.Combine(DataDirectory, "av-matrix-data.json");
+        var legacyBackup = Path.Combine(DataDirectory, "av-matrix-data.backup.json");
+        if (File.Exists(legacyData) && !File.Exists(DataPath)) File.Copy(legacyData, DataPath);
+        if (File.Exists(legacyBackup) && !File.Exists(BackupPath)) File.Copy(legacyBackup, BackupPath);
     }
 
     internal static void Normalize(AppData data)
     {
         data.SchemaVersion = 6;
-        data.ProjectName ??= "AV Matrix Studio";
+        data.ProjectName ??= "InNasc";
         data.Settings ??= new AppSettings();
         data.Settings.SharedMasterPath ??= string.Empty;
         data.Settings.SharedMasterFingerprint ??= string.Empty;
