@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AV Matrix Studio Update Manifest",
+  "type": "object",
+  "required": ["version", "releaseTag", "assetName", "sha256", "publishedAt"],
+  "properties": {
+    "version": { "type": "string" },
+    "releaseTag": { "type": "string" },
+    "assetName": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "minimumSupportedVersion": { "type": ["string", "null"] },
+    "releaseNotes": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}
