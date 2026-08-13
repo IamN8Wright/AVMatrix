@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\InNasc.ico</ApplicationIcon>
     <AssemblyName>InNasc</AssemblyName>
     <RootNamespace>InNasc</RootNamespace>
-    <Version>5.0.1</Version>
+    <Version>5.0.2</Version>
     <Authors>InN8 Labs</Authors>
     <Copyright>Copyright © 2026 InN8 Labs</Copyright>
     <Product>InNasc</Product>
