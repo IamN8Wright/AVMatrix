@@ -8,7 +8,7 @@ internal static class AppInfo
         {
             var version = typeof(AppInfo).Assembly.GetName().Version;
             return version is null
-                ? "3.2.6"
+                ? "4.0.0"
                 : $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
         }
     }
