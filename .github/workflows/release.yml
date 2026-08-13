@@ -22,9 +22,30 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Verify tag matches application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content 'AVMatrixStudio.csproj'
+          $appVersion = [string]$project.Project.PropertyGroup.Version
+          $tagVersion = '${{ github.ref_name }}'.TrimStart('v', 'V')
+          if ($appVersion -ne $tagVersion) {
+            throw "Release tag ${{ github.ref_name }} does not match AVMatrixStudio.csproj version $appVersion."
+          }
+
       - name: Build Windows release
         shell: pwsh
-        run: .\Build-Windows.bat
+        run: |
+          dotnet publish AVMatrixStudio.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output 'publish\win-x64' `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
 
       - name: Verify release executable exists
         shell: pwsh
