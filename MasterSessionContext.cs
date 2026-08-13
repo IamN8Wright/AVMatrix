@@ -16,11 +16,21 @@ internal static class MasterSessionContext
     public static MasterSession? Get(SyncTarget target, string masterKey)
     {
         var normalizedKey = NormalizeKey(target, masterKey);
-        return _current is not null &&
-               _current.Target == target &&
-               string.Equals(_current.MasterKey, normalizedKey, StringComparison.OrdinalIgnoreCase)
-            ? _current.Session
-            : null;
+        if (_current is not null &&
+            _current.Target == target &&
+            string.Equals(_current.MasterKey, normalizedKey, StringComparison.OrdinalIgnoreCase))
+            return _current.Session;
+
+        var global = InNascGlobalSessionContext.Current;
+        if (_current is not null &&
+            global is not null &&
+            InNascGlobalSessionContext.CompanyId.HasValue &&
+            _current.Session.UserId == global.UserId &&
+            target == SyncTarget.GoogleDrive &&
+            _current.Target == SyncTarget.SharedFile)
+            return _current.Session;
+
+        return null;
     }
 
     public static void Set(SyncTarget target, string masterKey, MasterSession session)
