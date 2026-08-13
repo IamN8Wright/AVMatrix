@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\AVMatrixStudio.ico</ApplicationIcon>
     <AssemblyName>AVMatrixStudio</AssemblyName>
     <RootNamespace>AVMatrixStudio</RootNamespace>
-    <Version>3.2.6</Version>
+    <Version>4.0.0</Version>
     <Authors>InN8 Labs</Authors>
     <Copyright>Copyright © 2026 InN8 Labs</Copyright>
     <Product>AV Matrix Studio</Product>
