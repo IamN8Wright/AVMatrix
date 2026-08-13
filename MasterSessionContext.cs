@@ -35,13 +35,27 @@ internal static class MasterSessionContext
 
     public static void Set(SyncTarget target, string masterKey, MasterSession session)
     {
+        var global = InNascGlobalSessionContext.Current;
+        if (_current is not null &&
+            global is not null &&
+            InNascGlobalSessionContext.CompanyId.HasValue &&
+            _current.Target == SyncTarget.SharedFile &&
+            target == SyncTarget.GoogleDrive &&
+            _current.Session.UserId == global.UserId &&
+            session.UserId == global.UserId)
+            return;
+
         _current = new ActiveMasterSession(target, NormalizeKey(target, masterKey), session);
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
     public static void Clear(SyncTarget target, string masterKey)
     {
-        if (Get(target, masterKey) is null) return;
+        if (_current is null) return;
+        var normalizedKey = NormalizeKey(target, masterKey);
+        if (_current.Target != target ||
+            !string.Equals(_current.MasterKey, normalizedKey, StringComparison.OrdinalIgnoreCase))
+            return;
         _current = null;
         Changed?.Invoke(null, EventArgs.Empty);
     }
