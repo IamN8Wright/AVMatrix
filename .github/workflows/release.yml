@@ -2,8 +2,13 @@ name: Build and Release AV Matrix Studio
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -65,7 +70,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AVMatrixStudio-${{ github.ref_name }}
+          name: AVMatrixStudio-${{ github.run_number }}-${{ github.sha }}
           path: |
             publish/win-x64/AVMatrixStudio.exe
             publish/win-x64/AVMatrixStudio.exe.sha256
