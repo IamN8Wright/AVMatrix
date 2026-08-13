@@ -1,9 +1,10 @@
-name: Build and Release AV Matrix Studio
+name: Build InNasc for Windows
 
 on:
   push:
     branches:
       - main
+      - agent/innasc-major-update
     tags:
       - 'v*'
   pull_request:
@@ -15,7 +16,7 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -31,10 +32,10 @@ jobs:
         id: app_version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content 'AVMatrixStudio.csproj'
+          [xml]$project = Get-Content 'InNasc.csproj'
           $version = [string]$project.Project.PropertyGroup.Version
           if ([string]::IsNullOrWhiteSpace($version)) {
-            throw 'AVMatrixStudio.csproj does not contain an application version.'
+            throw 'InNasc.csproj does not contain an application version.'
           }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
@@ -46,17 +47,21 @@ jobs:
           $appVersion = '${{ steps.app_version.outputs.version }}'
           $tagVersion = '${{ github.ref_name }}'.TrimStart('v', 'V')
           if ($appVersion -ne $tagVersion) {
-            throw "Release tag ${{ github.ref_name }} does not match AVMatrixStudio.csproj version $appVersion."
+            throw "Release tag ${{ github.ref_name }} does not match InNasc.csproj version $appVersion."
           }
 
-      - name: Restore production branding
+      - name: Restore supplemental branding
         shell: pwsh
         run: .\Restore-BrandAssets.ps1
+
+      - name: Run migration and authentication smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
 
       - name: Build Windows release
         shell: pwsh
         run: |
-          dotnet publish AVMatrixStudio.csproj `
+          dotnet publish InNasc.csproj `
             --configuration Release `
             --runtime win-x64 `
             --self-contained true `
@@ -67,31 +72,35 @@ jobs:
             -p:DebugType=None `
             -p:DebugSymbols=false
 
-      - name: Verify release executable exists
+      - name: Verify InNasc executable
         shell: pwsh
         run: |
-          $exe = 'publish\win-x64\AVMatrixStudio.exe'
+          $exe = 'publish\win-x64\InNasc.exe'
           if (-not (Test-Path $exe)) {
             throw "Expected release asset not found: $exe"
+          }
+          $product = (Get-Item $exe).VersionInfo.ProductName
+          if ($product -ne 'InNasc') {
+            throw "Unexpected executable product name: $product"
           }
 
       - name: Create SHA-256 checksum
         shell: pwsh
         run: |
-          $exe = 'publish\win-x64\AVMatrixStudio.exe'
+          $exe = 'publish\win-x64\InNasc.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  AVMatrixStudio.exe" | Set-Content -NoNewline 'publish\win-x64\AVMatrixStudio.exe.sha256'
+          "$hash  InNasc.exe" | Set-Content -NoNewline 'publish\win-x64\InNasc.exe.sha256'
 
-      - name: Upload build artifact
+      - name: Upload testable Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AVMatrixStudio-${{ steps.app_version.outputs.version }}-${{ github.run_number }}
+          name: InNasc-${{ steps.app_version.outputs.version }}-${{ github.run_number }}
           path: |
-            publish/win-x64/AVMatrixStudio.exe
-            publish/win-x64/AVMatrixStudio.exe.sha256
+            publish/win-x64/InNasc.exe
+            publish/win-x64/InNasc.exe.sha256
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release AV Matrix Studio '))
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release InNasc '))
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,8 +110,8 @@ jobs:
           } else {
             '${{ steps.app_version.outputs.tag }}'
           }
-          $exe = 'publish\win-x64\AVMatrixStudio.exe'
-          $checksum = 'publish\win-x64\AVMatrixStudio.exe.sha256'
+          $exe = 'publish\win-x64\InNasc.exe'
+          $checksum = 'publish\win-x64\InNasc.exe.sha256'
           gh release view $tag --repo '${{ github.repository }}' *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $exe $checksum --clobber --repo '${{ github.repository }}'
@@ -110,6 +119,6 @@ jobs:
             gh release create $tag $exe $checksum `
               --repo '${{ github.repository }}' `
               --target '${{ github.sha }}' `
-              --title "AV Matrix Studio $tag" `
+              --title "InNasc $tag" `
               --generate-notes
           }

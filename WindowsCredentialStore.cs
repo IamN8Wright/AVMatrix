@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class WindowsCredentialStore
 {
@@ -71,7 +71,7 @@ internal static class WindowsCredentialStore
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException(
-                "AV Matrix Studio credential storage requires Windows.");
+                "InNasc credential storage requires Windows.");
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

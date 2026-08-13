@@ -4,11 +4,11 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $bundleDirectory = Join-Path $root 'BrandAssets'
 $parts = @(Get-ChildItem $bundleDirectory -Filter 'assets.part*.b64' | Sort-Object Name)
 if ($parts.Count -eq 0) {
-    throw 'The AV Matrix production branding bundle is missing.'
+    throw 'The supplemental InNasc branding bundle is missing.'
 }
 
 $base64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
-$zipPath = Join-Path $env:TEMP ("AVMatrixBrandAssets-{0}.zip" -f [guid]::NewGuid().ToString('N'))
+$zipPath = Join-Path $env:TEMP ("InNascBrandAssets-{0}.zip" -f [guid]::NewGuid().ToString('N'))
 $assetsPath = Join-Path $root 'Assets'
 
 try {
@@ -29,7 +29,7 @@ try {
         }
     }
 
-    Write-Host 'AV Matrix Studio production branding restored.'
+    Write-Host 'InNasc supplemental branding restored.'
 }
 finally {
     Remove-Item $zipPath -Force -ErrorAction SilentlyContinue

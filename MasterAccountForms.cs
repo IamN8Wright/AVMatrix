@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record MasterOwnerSetupResult(
     MasterAccessControl Access,
@@ -16,7 +16,7 @@ internal sealed class MasterSignInForm : Form
     private MasterSignInForm(MasterAccessControl access)
     {
         _access = access;
-        Text = "Sign in to Master Matrix";
+        Text = "Sign in to company workspace";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -27,9 +27,9 @@ internal sealed class MasterSignInForm : Form
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
 
-        Controls.Add(Heading("Master Matrix sign in", 26, 22));
+        Controls.Add(Heading("company workspace sign in", 26, 22));
         Controls.Add(Description(
-            "Use the account created by the Master Owner. Your role controls read, write, checkout, and account-management access.",
+            "Use the account created by the company Owner. Your role controls read, write, checkout, and account-management access.",
             28, 61, 438, 44));
         Controls.Add(FieldLabel("Username", 28, 116));
         ConfigureBox(_username, 28, 138);
@@ -131,7 +131,7 @@ internal sealed class MasterOwnerSetupForm : Form
 
     private MasterOwnerSetupForm()
     {
-        Text = "Set up Master Owner";
+        Text = "Set up company Owner";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -144,7 +144,7 @@ internal sealed class MasterOwnerSetupForm : Form
 
         Controls.Add(MasterSignInForm.Heading("Create the first Owner", 26, 22));
         Controls.Add(MasterSignInForm.Description(
-            "The Owner has full access and can create Tech and Read-only accounts. Each user's password securely unlocks the same encrypted Master Matrix; passwords are never stored as readable text.",
+            "The Owner has full access and can create Tech and Read-only accounts. Each user's password securely unlocks the same encrypted company workspace; passwords are never stored as readable text.",
             28, 61, 468, 48));
         AddField("Username", _username, 116);
         AddField("Display name", _displayName, 180);
@@ -364,7 +364,7 @@ internal sealed class MasterUserManagementForm : Form
                 passwords.Value.NewPassword);
             MessageBox.Show(this,
                 "Your password will be updated when you click Save accounts.",
-                "Master access",
+                "Company access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -392,81 +392,7 @@ internal sealed class MasterUserManagementForm : Form
         catch (Exception exception)
         {
             ShowError(exception);
-        }
-    }
-
-    private void EditAccount()
-    {
-        if (SelectedUser() is not { } user) return;
-        using var editor = new MasterUserEditorForm(user);
-        if (editor.ShowDialog(this) != DialogResult.OK) return;
-        try
-        {
-            var checkoutCount = ResultAccess.Checkouts.Count(checkout => checkout.UserId == user.Id);
-            if (checkoutCount > 0 &&
-                (!editor.AccountEnabled || editor.Role == MasterUserRole.ReadOnly) &&
-                MessageBox.Show(this,
-                    $"This account holds {checkoutCount:N0} client checkout(s). Making it read-only or disabled will release those locks. " +
-                    "Ask the technician whether their work has been pushed; unpushed work will remain only on their PC.\r\n\r\nContinue?",
-                    "Release client checkout",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-                return;
-            MasterAccessService.UpdateUser(
-                ResultAccess,
-                _session,
-                user.Id,
-                editor.DisplayName,
-                editor.Role,
-                editor.AccountEnabled);
-            RefreshUsers(user.Id);
-        }
-        catch (Exception exception)
-        {
-            ShowError(exception);
-        }
-    }
-
-    private void ResetPassword()
-    {
-        if (SelectedUser() is not { } user) return;
-        var password = MasterPasswordResetForm.Prompt(this, user.Username);
-        if (password is null) return;
-        try
-        {
-            MasterAccessService.ResetPassword(ResultAccess, _session, user.Id, password);
-            MessageBox.Show(this, "The account password was reset.", "Master accounts",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception exception)
-        {
-            ShowError(exception);
-        }
-    }
-
-    private void DeleteAccount()
-    {
-        if (SelectedUser() is not { } user) return;
-        if (MessageBox.Show(this,
-                $"Delete the account '{user.Username}'? Any client checkout held by it will be released.",
-                "Delete master account",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-            return;
-        try
-        {
-            MasterAccessService.DeleteUser(ResultAccess, _session, user.Id);
-            RefreshUsers();
-        }
-        catch (Exception exception)
-        {
-            ShowError(exception);
-        }
-    }
-
-    private MasterUserRecord? SelectedUser() =>
+        ÷_m¢G§²ÚîÆ­yÕlectedUser() =>
         _users.SelectedItems.Count == 1
             ? (MasterUserRecord)_users.SelectedItems[0].Tag!
             : null;

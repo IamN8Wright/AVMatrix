@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal enum SyncIndicatorState
 {
@@ -80,14 +80,14 @@ internal static class SyncIndicatorService
         if (linkedTargets > 0 && syncedTargets == linkedTargets)
             return new SyncIndicatorResult(
                 SyncIndicatorState.Synced,
-                "Shared master sync — up to date");
+                "Company file sync — up to date");
 
         return new SyncIndicatorResult(
             SyncIndicatorState.NeedsSync,
             linkedTargets == 0
-                ? "Shared master sync — not linked"
+                ? "Company file sync — not linked"
                 : settings.ActiveCheckoutClientId.HasValue
                     ? "Client checkout — changes need to be checked in"
-                    : "Shared master sync — changes need to be merged or pushed");
+                    : "Company file sync — changes need to be merged or pushed");
     }
 }

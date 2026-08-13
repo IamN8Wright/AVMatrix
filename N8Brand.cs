@@ -1,9 +1,9 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class N8Brand
 {
-    private const string DarkLogoResource = "AVMatrixStudio.Assets.N8LogoDark.png";
-    private const string LightLogoResource = "AVMatrixStudio.Assets.N8LogoLight.png";
+    private const string DarkLogoResource = "InNasc.Assets.N8LogoDark.png";
+    private const string LightLogoResource = "InNasc.Assets.N8LogoLight.png";
 
     public static Control CreateLogo(int width, int height, bool onDarkBackground = false) =>
         new N8BrandLogo(width, height, onDarkBackground);

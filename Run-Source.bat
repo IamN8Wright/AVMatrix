@@ -10,6 +10,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-dotnet run --project AVMatrixStudio.csproj
+dotnet run --project InNasc.csproj
 if errorlevel 1 pause
 

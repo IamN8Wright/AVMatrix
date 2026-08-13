@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 public sealed class DataStore
 {

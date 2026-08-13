@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record GitHubMasterMirrorResult(
     string CompanyId,
@@ -16,7 +16,7 @@ internal static class GitHubMasterMirrorService
     {
         var active = MasterSessionContext.Current
             ?? throw new MasterAuthorizationException(
-                "Sign in to a Master Matrix before mirroring it to GitHub.");
+                "Sign in to a company workspace before mirroring it to GitHub.");
         var options = configuration.ToOptions();
         var displayName = string.IsNullOrWhiteSpace(configuration.CompanyDisplayName)
             ? data.ProjectName
@@ -92,7 +92,7 @@ internal static class GitHubMasterMirrorService
             SyncTarget.SharedFile => ReadSharedRemote(data),
             SyncTarget.GoogleDrive => await ReadGoogleDriveRemoteAsync(data, cancellationToken),
             _ => throw new InvalidOperationException(
-                "This Master Matrix provider cannot be mirrored to GitHub yet.")
+                "This company workspace provider cannot be mirrored to GitHub yet.")
         };
     }
 
@@ -101,7 +101,7 @@ internal static class GitHubMasterMirrorService
         var masterPath = data.Settings.SharedMasterPath;
         if (string.IsNullOrWhiteSpace(masterPath) || !File.Exists(masterPath))
             throw new FileNotFoundException(
-                "The active shared Master Matrix file is not available.",
+                "The active shared company workspace file is not available.",
                 masterPath);
 
         var payloads = new Dictionary<Guid, byte[]>();
@@ -124,7 +124,7 @@ internal static class GitHubMasterMirrorService
         CancellationToken cancellationToken)
     {
         var master = await GoogleDriveService.DownloadAsync(data.Settings, cancellationToken);
-        ValidatePayloadSize("master.avmatrix", master.Contents);
+        ValidatePayloadSize("master.nasc", master.Contents);
 
         var payloads = new Dictionary<Guid, byte[]>();
         foreach (var reference in data.MasterAccess.ClientSubmatrices)
@@ -148,7 +148,7 @@ internal static class GitHubMasterMirrorService
         if (bytes.LongLength <= GitHubMasterStorageService.MaximumStoredFileBytes) return;
         throw new InvalidOperationException(
             $"'{name}' is {bytes.LongLength / (1024d * 1024d):N1} MB and is too large for the " +
-            "GitHub Master Matrix storage provider. Leave this Master on Google Drive or a local/network share.");
+            "GitHub company storage provider. Leave this company file on Google Drive or a local/network share.");
     }
 
     private sealed record ActiveRemoteSnapshot(

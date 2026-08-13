@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class EquipmentEditorForm : Form
 {
@@ -370,456 +370,4 @@ internal sealed class EquipmentEditorForm : Form
             _configurationGrid.Rows[eventArgs.RowIndex].Selected = true;
             SaveSelectedConfigurationFile();
         };
-        _configurationGrid.CellDoubleClick += (_, eventArgs) =>
-        {
-            if (eventArgs.RowIndex < 0 || eventArgs.ColumnIndex < 0 ||
-                _configurationGrid.Columns[eventArgs.ColumnIndex].Name == "Download")
-                return;
-            _configurationGrid.ClearSelection();
-            _configurationGrid.Rows[eventArgs.RowIndex].Selected = true;
-            SaveSelectedConfigurationFile();
-        };
-    }
-
-    private void AddConfigurationFiles()
-    {
-        if (!_configurationFilesEditable) return;
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Attach device configuration files",
-            Filter = "All files (*.*)|*.*",
-            Multiselect = true,
-            CheckFileExists = true
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        foreach (var path in dialog.FileNames)
-        {
-            try
-            {
-                var info = new FileInfo(path);
-                if (info.Length > 250L * 1024 * 1024)
-                    throw new InvalidDataException(
-                        $"'{info.Name}' is larger than the 250 MB per-file safety limit.");
-                if (info.Length > 50L * 1024 * 1024 &&
-                    MessageBox.Show(this,
-                        $"{info.Name} is {FormatSize(info.Length)} and will make the InNasc considerably larger.\r\n\r\nAttach it anyway?",
-                        "Large configuration file",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-                    continue;
-
-                var existing = _configurationFiles.FirstOrDefault(file =>
-                    string.Equals(file.FileName, info.Name, StringComparison.OrdinalIgnoreCase));
-                if (existing is not null && MessageBox.Show(this,
-                        $"A file named '{info.Name}' is already attached. Replace it?",
-                        "Replace configuration file",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question,
-                        MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-                    continue;
-                var contents = File.ReadAllBytes(path);
-                var attachment = existing ?? new DeviceConfigurationFile();
-                attachment.FileName = info.Name;
-                attachment.ContentType = ContentTypeFor(info.Extension);
-                attachment.SizeBytes = contents.LongLength;
-                attachment.Sha256 = Convert.ToHexString(SHA256.HashData(contents));
-                attachment.ContentBase64 = Convert.ToBase64String(contents);
-                attachment.ContentIncluded = true;
-                attachment.AddedBy = $"{Environment.UserName} on {Environment.MachineName}";
-                attachment.AddedUtc = DateTime.UtcNow;
-                if (existing is null) _configurationFiles.Add(attachment);
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(this,
-                    $"The file could not be attached.\r\n\r\n{exception.Message}",
-                    "Configuration file",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
-        RefreshConfigurationFiles();
-    }
-
-    private void SaveSelectedConfigurationFile()
-    {
-        if (_configurationGrid.SelectedRows.Count != 1) return;
-        var file = (DeviceConfigurationFile)_configurationGrid.SelectedRows[0].Tag!;
-        if (!_configurationFilesEditable || MasterSessionContext.Current?.Session.CanWrite == false)
-        {
-            MessageBox.Show(this,
-                "Configuration files can be downloaded only by an Owner or Tech after this client is checked out.",
-                "Download configuration file",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-        if (!file.ContentIncluded)
-        {
-            MessageBox.Show(this,
-                "Check out this client to download the configuration file.",
-                "Download configuration file",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-        using var dialog = new SaveFileDialog
-        {
-            Title = "Download device configuration file",
-            FileName = file.FileName,
-            Filter = "All files (*.*)|*.*",
-            OverwritePrompt = true
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        try
-        {
-            File.WriteAllBytes(dialog.FileName, file.GetContents());
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this,
-                $"The file could not be saved.\r\n\r\n{exception.Message}",
-                "Configuration file",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-        }
-    }
-
-    private void RemoveSelectedConfigurationFiles()
-    {
-        if (!_configurationFilesEditable) return;
-        if (_configurationGrid.SelectedRows.Count == 0) return;
-        var selected = _configurationGrid.SelectedRows.Cast<DataGridViewRow>()
-            .Select(row => (DeviceConfigurationFile)row.Tag!)
-            .ToList();
-        if (MessageBox.Show(this,
-                $"Remove {selected.Count:N0} attached configuration file(s) from this device?",
-                "Remove configuration files",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
-            return;
-        foreach (var file in selected) _configurationFiles.Remove(file);
-        RefreshConfigurationFiles();
-    }
-
-    private void RefreshConfigurationFiles()
-    {
-        _configurationGrid.Rows.Clear();
-        foreach (var file in _configurationFiles.OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase))
-        {
-            var canDownload = _configurationFilesEditable && file.ContentIncluded &&
-                MasterSessionContext.Current?.Session.CanWrite != false;
-            var actionText = canDownload
-                ? "Download"
-                : MasterSessionContext.Current?.Session.CanWrite == false
-                    ? "Owner/Tech only"
-                    : "Check out client";
-            var rowIndex = _configurationGrid.Rows.Add(
-                file.FileName,
-                FormatSize(file.SizeBytes),
-                file.AddedUtc.ToLocalTime().ToString("g"),
-                file.Sha256.Length > 16 ? file.Sha256[..16] + "â€¦" : file.Sha256,
-                actionText);
-            var row = _configurationGrid.Rows[rowIndex];
-            row.Tag = file;
-            if (!canDownload)
-            {
-                row.Cells["Download"] = new DataGridViewTextBoxCell { Value = actionText };
-                row.Cells["Download"].Style.ForeColor = UiTheme.Muted;
-                row.Cells["Download"].ToolTipText = MasterSessionContext.Current?.Session.CanWrite == false
-                    ? "Only an Owner or Tech can download configuration files."
-                    : "Metadata only â€” check out this client to download the file.";
-            }
-        }
-    }
-
-    private static DeviceConfigurationFile CloneConfigurationFile(DeviceConfigurationFile source) => new()
-    {
-        Id = source.Id,
-        FileName = source.FileName,
-        ContentType = source.ContentType,
-        SizeBytes = source.SizeBytes,
-        Sha256 = source.Sha256,
-        ContentBase64 = source.ContentBase64,
-        ContentIncluded = source.ContentIncluded,
-        Notes = source.Notes,
-        AddedBy = source.AddedBy,
-        AddedUtc = source.AddedUtc
-    };
-
-    private static string ContentTypeFor(string extension) => extension.ToLowerInvariant() switch
-    {
-        ".json" => "application/json",
-        ".xml" => "application/xml",
-        ".txt" or ".cfg" or ".conf" or ".ini" => "text/plain",
-        ".zip" => "application/zip",
-        _ => "application/octet-stream"
-    };
-
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):0.##} GB",
-        >= 1024L * 1024 => $"{bytes / (1024d * 1024):0.##} MB",
-        >= 1024L => $"{bytes / 1024d:0.##} KB",
-        _ => $"{bytes:N0} B"
-    };
-
-    private static TabPage NewPage(string text) => new(text)
-    {
-        BackColor = UiTheme.Surface,
-        Padding = new Padding(16)
-    };
-
-    private static TableLayoutPanel NewFormTable()
-    {
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 6,
-            GrowStyle = TableLayoutPanelGrowStyle.AddRows,
-            Padding = new Padding(4)
-        };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        return table;
-    }
-
-    private void AddField(
-        TableLayoutPanel table,
-        int row,
-        string label,
-        string key,
-        string value,
-        bool span = false,
-        int column = 0,
-        bool password = false,
-        bool multiline = false)
-    {
-        while (table.RowStyles.Count <= row)
-            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        var holder = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = false,
-            Height = multiline ? 170 : 76,
-            ColumnCount = 1,
-            RowCount = 2,
-            Padding = new Padding(0, 4, 0, 7),
-            Margin = new Padding(column == 0 ? 4 : 8, 5, column == 0 ? 8 : 4, 2)
-        };
-        holder.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        holder.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        holder.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var caption = new Label
-        {
-            Text = label.ToUpperInvariant(),
-            AccessibleName = $"{label} field title",
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = UiTheme.Font(8, FontStyle.Bold),
-            ForeColor = UiTheme.Muted,
-            Margin = Padding.Empty
-        };
-        var textBox = new TextBox
-        {
-            Text = value,
-            PlaceholderText = string.Empty,
-            AccessibleName = label,
-            Dock = DockStyle.Fill,
-            Multiline = multiline,
-            ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None,
-            UseSystemPasswordChar = password,
-            Font = UiTheme.Font(10),
-            BackColor = UiTheme.InputSurface,
-            ForeColor = UiTheme.Text,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        holder.Controls.Add(caption, 0, 0);
-        holder.Controls.Add(textBox, 0, 1);
-        table.Controls.Add(holder, column, row);
-        if (span)
-            table.SetColumnSpan(holder, 2);
-        _fields[key] = textBox;
-    }
-
-    private void Save_Click(object? sender, EventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(Value(nameof(EquipmentRecord.Description))))
-        {
-            MessageBox.Show(this, "Enter an equipment description.", "Description required",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-            DialogResult = DialogResult.None;
-            _fields[nameof(EquipmentRecord.Description)].Focus();
-            return;
-        }
-
-        var pending = new List<(NetworkInterfaceEditorRow Row, string Ip, string Mac,
-            NetworkInterfaceType Type)>();
-        foreach (var row in _networkRows)
-        {
-            var rawIp = row.IpAddress.Text.Trim();
-            var rawMac = row.MacAddress.Text.Trim();
-            var normalizedIp = string.Empty;
-            var normalizedMac = string.Empty;
-            if (rawIp.Length > 0 && !Ipv4AddressText.TryParse(rawIp, out _, out normalizedIp))
-            {
-                MessageBox.Show(this, $"'{rawIp}' is not a valid IPv4 address.", "Check IP address",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                DialogResult = DialogResult.None;
-                row.IpAddress.Focus();
-                return;
-            }
-            if (rawMac.Length > 0 && !MacAddressText.TryParse(rawMac, out normalizedMac))
-            {
-                MessageBox.Show(this,
-                    $"'{rawMac}' is not a valid MAC address. Use 12 hexadecimal digits; colons, hyphens, dots, and spaces are accepted.",
-                    "Check MAC address", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                DialogResult = DialogResult.None;
-                row.MacAddress.Focus();
-                return;
-            }
-
-            var ip = rawIp.Length == 0 ? string.Empty : normalizedIp;
-            var mac = rawMac.Length == 0 ? string.Empty : normalizedMac;
-            var type = row.Type.SelectedItem is NetworkInterfaceType selectedType
-                ? selectedType
-                : NetworkInterfaceType.Main;
-            pending.Add((row, ip, mac, type));
-        }
-        var duplicateIp = pending.Where(item => item.Ip.Length > 0)
-            .GroupBy(item => item.Ip, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(group => group.Count() > 1);
-        if (duplicateIp is not null)
-        {
-            MessageBox.Show(this, $"IP address {duplicateIp.Key} is listed more than once on this device.",
-                "Duplicate IP address", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            DialogResult = DialogResult.None;
-            duplicateIp.First().Row.IpAddress.Focus();
-            return;
-        }
-
-        _source.Description = Value(nameof(EquipmentRecord.Description));
-        _source.Manufacturer = Value(nameof(EquipmentRecord.Manufacturer));
-        _source.PartNumber = Value(nameof(EquipmentRecord.PartNumber));
-        _source.EquipmentId = Value(nameof(EquipmentRecord.EquipmentId));
-        _source.Hostname = Value(nameof(EquipmentRecord.Hostname));
-        _source.SerialNumber = Value(nameof(EquipmentRecord.SerialNumber));
-        _source.Firmware = Value(nameof(EquipmentRecord.Firmware));
-        var interfaces = new List<NetworkInterfaceRecord>();
-        foreach (var pendingItem in pending)
-        {
-            var item = pendingItem.Row.Source;
-            var ip = pendingItem.Ip;
-            var mac = pendingItem.Mac;
-            var type = pendingItem.Type;
-            var changed = item.Type != type ||
-                !string.Equals(item.IpAddress, ip, StringComparison.OrdinalIgnoreCase) ||
-                !MacAddressText.EqualsNormalized(item.MacAddress, mac) &&
-                !(string.IsNullOrWhiteSpace(item.MacAddress) && string.IsNullOrWhiteSpace(mac));
-            item.Type = type;
-            item.IpAddress = ip;
-            item.MacAddress = mac;
-            if (changed)
-            {
-                item.NetworkState = ip.Length == 0 ? NetworkState.NoAddress : NetworkState.Unknown;
-                item.LastCheckedUtc = null;
-                item.LastLatencyMs = null;
-                item.LastNetworkError = ip.Length == 0 ? string.Empty : "Waiting for manual verification.";
-                item.ObservedMacAddress = string.Empty;
-                item.MacVerificationMessage = string.Empty;
-                item.HttpPortOpen = false;
-                item.HttpsPortOpen = false;
-            }
-            interfaces.Add(item);
-        }
-        _source.NetworkInterfaces = interfaces;
-        _source.Subnet = Value(nameof(EquipmentRecord.Subnet));
-        _source.Gateway = Value(nameof(EquipmentRecord.Gateway));
-        _source.SerialConnection = Value(nameof(EquipmentRecord.SerialConnection));
-        _source.Username = Value(nameof(EquipmentRecord.Username));
-        _source.Password = Value(nameof(EquipmentRecord.Password));
-        _source.SourceFile = Value(nameof(EquipmentRecord.SourceFile));
-        _source.Notes = Value(nameof(EquipmentRecord.Notes));
-        _source.ConfigurationFiles = _configurationFiles.Select(CloneConfigurationFile).ToList();
-        _source.UpdatedUtc = DateTime.UtcNow;
-
-        _source.SyncLegacyNetworkFields();
-        _source.UpdateAggregateNetworkState();
-    }
-
-    private string Value(string key) => _fields[key].Text.Trim();
-
-    private sealed class NetworkInterfaceEditorRow
-    {
-        public NetworkInterfaceRecord Source { get; }
-        public Panel Container { get; } = new();
-        public ComboBox Type { get; } = new();
-        public TextBox IpAddress { get; } = new();
-        public TextBox MacAddress { get; } = new();
-        public Button RemoveButton { get; }
-
-        public NetworkInterfaceEditorRow(NetworkInterfaceRecord source)
-        {
-            Source = source;
-            Container.Size = new Size(710, 92);
-            Container.Margin = new Padding(4, 2, 4, 8);
-            Container.BackColor = UiTheme.HeaderSurface;
-
-            AddLabel("TYPE", 14, 10, 132);
-            AddLabel("IP ADDRESS", 158, 10, 220);
-            AddLabel("MAC ADDRESS", 390, 10, 244);
-
-            Type.DropDownStyle = ComboBoxStyle.DropDownList;
-            Type.Items.AddRange(Enum.GetValues<NetworkInterfaceType>().Cast<object>().ToArray());
-            Type.SelectedItem = source.Type;
-            Type.Location = new Point(14, 34);
-            Type.Size = new Size(132, 29);
-            Type.Font = UiTheme.Font(9.5f);
-            UiTheme.ConfigureUniformComboBox(Type);
-            Container.Controls.Add(Type);
-
-            IpAddress.Text = source.IpAddress;
-            IpAddress.PlaceholderText = "IP address";
-            IpAddress.AccessibleName = "IP address";
-            IpAddress.Location = new Point(158, 34);
-            IpAddress.Size = new Size(220, 29);
-            IpAddress.Font = UiTheme.Font(9.5f);
-            Container.Controls.Add(IpAddress);
-
-            MacAddress.Text = source.MacAddress;
-            MacAddress.PlaceholderText = "MAC address";
-            MacAddress.AccessibleName = "MAC address";
-            MacAddress.Location = new Point(390, 34);
-            MacAddress.Size = new Size(244, 29);
-            MacAddress.Font = UiTheme.Font(9.5f);
-            Container.Controls.Add(MacAddress);
-
-            RemoveButton = UiTheme.DangerButton("Ã—");
-            RemoveButton.AutoSize = false;
-            RemoveButton.Size = new Size(42, 30);
-            RemoveButton.Location = new Point(650, 33);
-            RemoveButton.Font = UiTheme.Font(13, FontStyle.Bold);
-            Container.Controls.Add(RemoveButton);
-        }
-
-        private void AddLabel(string text, int left, int top, int width)
-        {
-            Container.Controls.Add(new Label
-            {
-                Text = text,
-                AutoSize = false,
-                Size = new Size(width, 18),
-                Location = new Point(left, top),
-                Font = UiTheme.Font(8, FontStyle.Bold),
-                ForeColor = UiTheme.Muted,
-                TextAlign = ContentAlignment.MiddleLeft
-            });
-        }
-    }
-}
+×ž|¶‰žËkºwµç@¥˜€¡‘¥…±½œ¹M¡½Ý¥…±½œ¡Ñ¡¥Ì¤€„ô¥…±½I•ÍÕ±Ð¹=,¤É•ÑÕÉ¸ì4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€¥±”¹]É¥Ñ•±±	åÑ•Ì¡‘¥…±½œ¹¥±•9…µ”°™¥±”¹•Ñ½¹Ñ•¹ÑÌ ¤¤ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡á•ÁÑ¥½¸•á•ÁÑ¥½¸¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°4(€€€€€€€€€€€€€€€€‰Q¡”™¥±”½Õ±¹½Ð‰”Í…Ù•¹qÉq¹qÉq¹í•á•ÁÑ¥½¸¹5•ÍÍ…•ôˆ°4(€€€€€€€€€€€€€€€€‰½¹™¥ÕÉ…Ñ¥½¸™¥±”ˆ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á%½¸¹ÉÉ½È¤ì4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥I•µ½Ù•M•±•Ñ•‘½¹™¥ÕÉ…Ñ¥½¹¥±•Ì ¤4(€€€ì4(€€€€€€€¥˜€ …}½¹™¥ÕÉ…Ñ¥½¹¥±•Í‘¥Ñ…‰±”¤É•ÑÕÉ¸ì4(€€€€€€€¥˜€¡}½¹™¥ÕÉ…Ñ¥½¹É¥¹M•±•Ñ•‘I½ÝÌ¹½Õ¹Ð€ôô€À¤É•ÑÕÉ¸ì4(€€€€€€€Ù…ÈÍ•±•Ñ•€ô}½¹™¥ÕÉ…Ñ¥½¹É¥¹M•±•Ñ•‘I½ÝÌ¹…ÍÐñ…Ñ…É¥‘Y¥•ÝI½Üø ¤4(€€€€€€€€€€€€¹M•±•Ð¡É½Ü€ôø€¡•Ù¥•½¹™¥ÕÉ…Ñ¥½¹¥±”¥É½Ü¹Q…œ„¤4(€€€€€€€€€€€€¹Q½1¥ÍÐ ¤ì4(€€€€€€€¥˜€¡5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°4(€€€€€€€€€€€€€€€€‰I•µ½Ù”íÍ•±•Ñ•¹½Õ¹Ðé8Áô…ÑÑ…¡•½¹™¥ÕÉ…Ñ¥½¸™¥±”¡Ì¤™É½´Ñ¡¥Ì‘•Ù¥”üˆ°4(€€€€€€€€€€€€€€€€‰I•µ½Ù”½¹™¥ÕÉ…Ñ¥½¸™¥±•Ìˆ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹e•Í9¼°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á%½¸¹]…É¹¥¹œ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á•™…Õ±Ñ	ÕÑÑ½¸¹	ÕÑÑ½¸È¤€„ô¥…±½I•ÍÕ±Ð¹e•Ì¤4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€™½É•… €¡Ù…È™¥±”¥¸Í•±•Ñ•¤}½¹™¥ÕÉ…Ñ¥½¹¥±•Ì¹I•µ½Ù”¡™¥±”¤ì4(€€€€€€€I•™É•Í¡½¹™¥ÕÉ…Ñ¥½¹¥±•Ì ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥I•™É•Í¡½¹™¥ÕÉ…Ñ¥½¹¥±•Ì ¤4(€€€ì4(€€€€€€€}½¹™¥ÕÉ…Ñ¥½¹É¥¹I½ÝÌ¹±•…È ¤ì4(€€€€€€€™½É•… €¡Ù…È™¥±”¥¸}½¹™¥ÕÉ…Ñ¥½¹¥±•Ì¹=É‘•É	ä¡™¥±”€ôø™¥±”¹¥±•9…µ”°MÑÉ¥¹½µÁ…É•È¹=É‘¥¹…±%¹½É•…Í”¤¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…È…¹½Ý¹±½…€ô}½¹™¥ÕÉ…Ñ¥½¹¥±•Í‘¥Ñ…‰±”€˜˜™¥±”¹½¹Ñ•¹Ñ%¹±Õ‘•€˜˜4(€€€€€€€€€€€€€€€5…ÍÑ•ÉM•ÍÍ¥½¹½¹Ñ•áÐ¹ÕÉÉ•¹Ðü¹M•ÍÍ¥½¸¹…¹]É¥Ñ”€„ô™…±Í”ì4(€€€€€€€€€€€Ù…È…Ñ¥½¹Q•áÐ€ô…¹½Ý¹±½…4(€€€€€€€€€€€€€€€€ü€‰½Ý¹±½…ˆ4(€€€€€€€€€€€€€€€€è5…ÍÑ•ÉM•ÍÍ¥½¹½¹Ñ•áÐ¹ÕÉÉ•¹Ðü¹M•ÍÍ¥½¸¹…¹]É¥Ñ”€ôô™…±Í”4(€€€€€€€€€€€€€€€€€€€€ü€‰=Ý¹•È½Q• ½¹±äˆ4(€€€€€€€€€€€€€€€€€€€€è€‰¡•¬½ÕÐ±¥•¹Ðˆì4(€€€€€€€€€€€Ù…ÈÉ½Ý%¹‘•à€ô}½¹™¥ÕÉ…Ñ¥½¹É¥¹I½ÝÌ¹‘ 4(€€€€€€€€€€€€€€€™¥±”¹¥±•9…µ”°4(€€€€€€€€€€€€€€€½Éµ…ÑM¥é”¡™¥±”¹M¥é•	åÑ•Ì¤°4(€€€€€€€€€€€€€€€™¥±”¹‘‘•‘UÑŒ¹Q½1½…±Q¥µ” ¤¹Q½MÑÉ¥¹œ ‰œˆ¤°4(€€€€€€€€€€€€€€€™¥±”¹M¡„ÈÔØ¹1•¹Ñ €ø€ÄØ€ü™¥±”¹M¡„ÈÔÙl¸¸ÄÙt€¬€‹Š˜ˆ€è™¥±”¹M¡„ÈÔØ°4(€€€€€€€€€€€€€€€…Ñ¥½¹Q•áÐ¤ì4(€€€€€€€€€€€Ù…ÈÉ½Ü€ô}½¹™¥ÕÉ…Ñ¥½¹É¥¹I½ÝÍmÉ½Ý%¹‘•átì4(€€€€€€€€€€€É½Ü¹Q…œ€ô™¥±”ì4(€€€€€€€€€€€¥˜€ ……¹½Ý¹±½…¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€É½Ü¹•±±Íl‰½Ý¹±½…‰t€ô¹•Ü…Ñ…É¥‘Y¥•ÝQ•áÑ	½á•±°ìY…±Õ”€ô…Ñ¥½¹Q•áÐôì4(€€€€€€€€€€€€€€€É½Ü¹•±±Íl‰½Ý¹±½…‰t¹MÑå±”¹½É•½±½È€ôU¥Q¡•µ”¹5ÕÑ•ì4(€€€€€€€€€€€€€€€É½Ü¹•±±Íl‰½Ý¹±½…‰t¹Q½½±Q¥ÁQ•áÐ€ô5…ÍÑ•ÉM•ÍÍ¥½¹½¹Ñ•áÐ¹ÕÉÉ•¹Ðü¹M•ÍÍ¥½¸¹…¹]É¥Ñ”€ôô™…±Í”4(€€€€€€€€€€€€€€€€€€€€ü€‰=¹±ä…¸=Ý¹•È½ÈQ• …¸‘½Ý¹±½…½¹™¥ÕÉ…Ñ¥½¸™¥±•Ì¸ˆ4(€€€€€€€€€€€€€€€€€€€€è€‰5•Ñ…‘…Ñ„½¹±äƒŠP¡•¬½ÕÐÑ¡¥Ì±¥•¹ÐÑ¼‘½Ý¹±½…Ñ¡”™¥±”¸ˆì4(€€€€€€€€€€€ô4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ•Ù¥•½¹™¥ÕÉ…Ñ¥½¹¥±”±½¹•½¹™¥ÕÉ…Ñ¥½¹¥±”¡•Ù¥•½¹™¥ÕÉ…Ñ¥½¹¥±”Í½ÕÉ”¤€ôø¹•Ü ¤4(€€€ì4(€€€€€€€%€ôÍ½ÕÉ”¹%°4(€€€€€€€¥±•9…µ”€ôÍ½ÕÉ”¹¥±•9…µ”°4(€€€€€€€½¹Ñ•¹ÑQåÁ”€ôÍ½ÕÉ”¹½¹Ñ•¹ÑQåÁ”°4(€€€€€€€M¥é•	åÑ•Ì€ôÍ½ÕÉ”¹M¥é•	åÑ•Ì°4(€€€€€€€M¡„ÈÔØ€ôÍ½ÕÉ”¹M¡„ÈÔØ°4(€€€€€€€½¹Ñ•¹Ñ	…Í”ØÐ€ôÍ½ÕÉ”¹½¹Ñ•¹Ñ	…Í”ØÐ°4(€€€€€€€½¹Ñ•¹Ñ%¹±Õ‘•€ôÍ½ÕÉ”¹½¹Ñ•¹Ñ%¹±Õ‘•°4(€€€€€€€9½Ñ•Ì€ôÍ½ÕÉ”¹9½Ñ•Ì°4(€€€€€€€‘‘•‘	ä€ôÍ½ÕÉ”¹‘‘•‘	ä°4(€€€€€€€‘‘•‘UÑŒ€ôÍ½ÕÉ”¹‘‘•‘UÑŒ4(€€€ôì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ½¹Ñ•¹ÑQåÁ•½È¡ÍÑÉ¥¹œ•áÑ•¹Í¥½¸¤€ôø•áÑ•¹Í¥½¸¹Q½1½Ý•É%¹Ù…É¥…¹Ð ¤ÍÝ¥Ñ 4(€€€ì4(€€€€€€€€ˆ¹©Í½¸ˆ€ôø€‰…ÁÁ±¥…Ñ¥½¸½©Í½¸ˆ°4(€€€€€€€€ˆ¹áµ°ˆ€ôø€‰…ÁÁ±¥…Ñ¥½¸½áµ°ˆ°4(€€€€€€€€ˆ¹ÑáÐˆ½È€ˆ¹™œˆ½È€ˆ¹½¹˜ˆ½È€ˆ¹¥¹¤ˆ€ôø€‰Ñ•áÐ½Á±…¥¸ˆ°4(€€€€€€€€ˆ¹é¥Àˆ€ôø€‰…ÁÁ±¥…Ñ¥½¸½é¥Àˆ°4(€€€€€€€|€ôø€‰…ÁÁ±¥…Ñ¥½¸½½Ñ•ÐµÍÑÉ•…´ˆ4(€€€ôì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œ½Éµ…ÑM¥é”¡±½¹œ‰åÑ•Ì¤€ôø‰åÑ•ÌÍÝ¥Ñ 4(€€€ì4(€€€€€€€€øô€ÄÀÈÑ0€¨€ÄÀÈÐ€¨€ÄÀÈÐ€ôø€‰í‰åÑ•Ì€¼€ ÄÀÈÑ€¨€ÄÀÈÐ€¨€ÄÀÈÐ¤èÀ¸Œôˆ°4(€€€€€€€€øô€ÄÀÈÑ0€¨€ÄÀÈÐ€ôø€‰í‰åÑ•Ì€¼€ ÄÀÈÑ€¨€ÄÀÈÐ¤èÀ¸Œô5ˆ°4(€€€€€€€€øô€ÄÀÈÑ0€ôø€‰í‰åÑ•Ì€¼€ÄÀÈÑèÀ¸Œô-ˆ°4(€€€€€€€|€ôø€‰í‰åÑ•Ìé8Áôˆ4(€€€ôì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒQ…‰A…”9•ÝA…”¡ÍÑÉ¥¹œÑ•áÐ¤€ôø¹•Ü¡Ñ•áÐ¤4(€€€ì4(€€€€€€€	…­½±½È€ôU¥Q¡•µ”¹MÕÉ™…”°4(€€€€€€€A…‘‘¥¹œ€ô¹•ÜA…‘‘¥¹œ ÄØ¤4(€€€ôì4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒQ…‰±•1…å½ÕÑA…¹•°9•Ý½ÉµQ…‰±” ¤4(€€€ì4(€€€€€€€Ù…ÈÑ…‰±”€ô¹•ÜQ…‰±•1…å½ÕÑA…¹•°4(€€€€€€€ì4(€€€€€€€€€€€½¬€ô½­MÑå±”¹Q½À°4(€€€€€€€€€€€ÕÑ½M¥é”€ôÑÉÕ”°4(€€€€€€€€€€€½±Õµ¹½Õ¹Ð€ô€È°4(€€€€€€€€€€€I½Ý½Õ¹Ð€ô€Ø°4(€€€€€€€€€€€É½ÝMÑå±”€ôQ…‰±•1…å½ÕÑA…¹•±É½ÝMÑå±”¹‘‘I½ÝÌ°4(€€€€€€€€€€€A…‘‘¥¹œ€ô¹•ÜA…‘‘¥¹œ Ð¤4(€€€€€€€ôì4(€€€€€€€Ñ…‰±”¹½±Õµ¹MÑå±•Ì¹‘¡¹•Ü½±Õµ¹MÑå±”¡M¥é•QåÁ”¹A•É•¹Ð°€ÔÀ¤¤ì4(€€€€€€€Ñ…‰±”¹½±Õµ¹MÑå±•Ì¹‘¡¹•Ü½±Õµ¹MÑå±”¡M¥é•QåÁ”¹A•É•¹Ð°€ÔÀ¤¤ì4(€€€€€€€É•ÑÕÉ¸Ñ…‰±”ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥‘‘¥•± 4(€€€€€€€Q…‰±•1…å½ÕÑA…¹•°Ñ…‰±”°4(€€€€€€€¥¹ÐÉ½Ü°4(€€€€€€€ÍÑÉ¥¹œ±…‰•°°4(€€€€€€€ÍÑÉ¥¹œ­•ä°4(€€€€€€€ÍÑÉ¥¹œÙ…±Õ”°4(€€€€€€€‰½½°ÍÁ…¸€ô™…±Í”°4(€€€€€€€¥¹Ð½±Õµ¸€ô€À°4(€€€€€€€‰½½°Á…ÍÍÝ½É€ô™…±Í”°4(€€€€€€€‰½½°µÕ±Ñ¥±¥¹”€ô™…±Í”¤4(€€€ì4(€€€€€€€Ý¡¥±”€¡Ñ…‰±”¹I½ÝMÑå±•Ì¹½Õ¹Ð€ðôÉ½Ü¤4(€€€€€€€€€€€Ñ…‰±”¹I½ÝMÑå±•Ì¹‘¡¹•ÜI½ÝMÑå±”¡M¥é•QåÁ”¹ÕÑ½M¥é”¤¤ì4(4(€€€€€€€Ù…È¡½±‘•È€ô¹•ÜQ…‰±•1…å½ÕÑA…¹•°4(€€€€€€€ì4(€€€€€€€€€€€½¬€ô½­MÑå±”¹Q½À°4(€€€€€€€€€€€ÕÑ½M¥é”€ô™…±Í”°4(€€€€€€€€€€€!•¥¡Ð€ôµÕ±Ñ¥±¥¹”€ü€ÄÜÀ€è€ÜØ°4(€€€€€€€€€€€½±Õµ¹½Õ¹Ð€ô€Ä°4(€€€€€€€€€€€I½Ý½Õ¹Ð€ô€È°4(€€€€€€€€€€€A…‘‘¥¹œ€ô¹•ÜA…‘‘¥¹œ À°€Ð°€À°€Ü¤°4(€€€€€€€€€€€5…É¥¸€ô¹•ÜA…‘‘¥¹œ¡½±Õµ¸€ôô€À€ü€Ð€è€à°€Ô°½±Õµ¸€ôô€À€ü€à€è€Ð°€È¤4(€€€€€€€ôì4(€€€€€€€¡½±‘•È¹½±Õµ¹MÑå±•Ì¹‘¡¹•Ü½±Õµ¹MÑå±”¡M¥é•QåÁ”¹A•É•¹Ð°€ÄÀÀ¤¤ì4(€€€€€€€¡½±‘•È¹I½ÝMÑå±•Ì¹‘¡¹•ÜI½ÝMÑå±”¡M¥é•QåÁ”¹‰Í½±ÕÑ”°€ÈÈ¤¤ì4(€€€€€€€¡½±‘•È¹I½ÝMÑå±•Ì¹‘¡¹•ÜI½ÝMÑå±”¡M¥é•QåÁ”¹A•É•¹Ð°€ÄÀÀ¤¤ì4(€€€€€€€Ù…È…ÁÑ¥½¸€ô¹•Ü1…‰•°4(€€€€€€€ì4(€€€€€€€€€€€Q•áÐ€ô±…‰•°¹Q½UÁÁ•É%¹Ù…É¥…¹Ð ¤°4(€€€€€€€€€€€•ÍÍ¥‰±•9…µ”€ô€‰í±…‰•±ô™¥•±Ñ¥Ñ±”ˆ°4(€€€€€€€€€€€½¬€ô½­MÑå±”¹¥±°°4(€€€€€€€€€€€ÕÑ½M¥é”€ô™…±Í”°4(€€€€€€€€€€€Q•áÑ±¥¸€ô½¹Ñ•¹Ñ±¥¹µ•¹Ð¹5¥‘‘±•1•™Ð°4(€€€€€€€€€€€½¹Ð€ôU¥Q¡•µ”¹½¹Ð à°½¹ÑMÑå±”¹	½±¤°4(€€€€€€€€€€€½É•½±½È€ôU¥Q¡•µ”¹5ÕÑ•°4(€€€€€€€€€€€5…É¥¸€ôA…‘‘¥¹œ¹µÁÑä4(€€€€€€€ôì4(€€€€€€€Ù…ÈÑ•áÑ	½à€ô¹•ÜQ•áÑ	½à4(€€€€€€€ì4(€€€€€€€€€€€Q•áÐ€ôÙ…±Õ”°4(€€€€€€€€€€€A±…•¡½±‘•ÉQ•áÐ€ôÍÑÉ¥¹œ¹µÁÑä°4(€€€€€€€€€€€•ÍÍ¥‰±•9…µ”€ô±…‰•°°4(€€€€€€€€€€€½¬€ô½­MÑå±”¹¥±°°4(€€€€€€€€€€€5Õ±Ñ¥±¥¹”€ôµÕ±Ñ¥±¥¹”°4(€€€€€€€€€€€MÉ½±±	…ÉÌ€ôµÕ±Ñ¥±¥¹”€üMÉ½±±	…ÉÌ¹Y•ÉÑ¥…°€èMÉ½±±	…ÉÌ¹9½¹”°4(€€€€€€€€€€€UÍ•MåÍÑ•µA…ÍÍÝ½É‘¡…È€ôÁ…ÍÍÝ½É°4(€€€€€€€€€€€½¹Ð€ôU¥Q¡•µ”¹½¹Ð ÄÀ¤°4(€€€€€€€€€€€	…­½±½È€ôU¥Q¡•µ”¹%¹ÁÕÑMÕÉ™…”°4(€€€€€€€€€€€½É•½±½È€ôU¥Q¡•µ”¹Q•áÐ°4(€€€€€€€€€€€	½É‘•ÉMÑå±”€ô	½É‘•ÉMÑå±”¹¥á•‘M¥¹±”4(€€€€€€€ôì4(€€€€€€€¡½±‘•È¹½¹ÑÉ½±Ì¹‘¡…ÁÑ¥½¸°€À°€À¤ì4(€€€€€€€¡½±‘•È¹½¹ÑÉ½±Ì¹‘¡Ñ•áÑ	½à°€À°€Ä¤ì4(€€€€€€€Ñ…‰±”¹½¹ÑÉ½±Ì¹‘¡¡½±‘•È°½±Õµ¸°É½Ü¤ì4(€€€€€€€¥˜€¡ÍÁ…¸¤4(€€€€€€€€€€€Ñ…‰±”¹M•Ñ½±Õµ¹MÁ…¸¡¡½±‘•È°€È¤ì4(€€€€€€€}™¥•±‘Ím­•åt€ôÑ•áÑ	½àì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥M…Ù•}±¥¬¡½‰©•ÐüÍ•¹‘•È°Ù•¹ÑÉÌ”¤4(€€€ì4(€€€€€€€¥˜€¡ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡Y…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹•ÍÉ¥ÁÑ¥½¸¤¤¤¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰¹Ñ•È…¸•ÅÕ¥Áµ•¹Ð‘•ÍÉ¥ÁÑ¥½¸¸ˆ°€‰•ÍÉ¥ÁÑ¥½¸É•ÅÕ¥É•ˆ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€¥…±½I•ÍÕ±Ð€ô¥…±½I•ÍÕ±Ð¹9½¹”ì4(€€€€€€€€€€€}™¥•±‘Ím¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹•ÍÉ¥ÁÑ¥½¸¥t¹½ÕÌ ¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€ô4(4(€€€€€€€Ù…ÈÁ•¹‘¥¹œ€ô¹•Ü1¥ÍÐð¡9•ÑÝ½É­%¹Ñ•É™…•‘¥Ñ½ÉI½ÜI½Ü°ÍÑÉ¥¹œ%À°ÍÑÉ¥¹œ5…Œ°4(€€€€€€€€€€€9•ÑÝ½É­%¹Ñ•É™…•QåÁ”QåÁ”¤ø ¤ì4(€€€€€€€™½É•… €¡Ù…ÈÉ½Ü¥¸}¹•ÑÝ½É­I½ÝÌ¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÉ…Ý%À€ôÉ½Ü¹%Á‘‘É•ÍÌ¹Q•áÐ¹QÉ¥´ ¤ì4(€€€€€€€€€€€Ù…ÈÉ…Ý5…Œ€ôÉ½Ü¹5…‘‘É•ÍÌ¹Q•áÐ¹QÉ¥´ ¤ì4(€€€€€€€€€€€Ù…È¹½Éµ…±¥é•‘%À€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€€€€€Ù…È¹½Éµ…±¥é•‘5…Œ€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€€€€€¥˜€¡É…Ý%À¹1•¹Ñ €ø€À€˜˜€…%ÁØÑ‘‘É•ÍÍQ•áÐ¹QÉåA…ÉÍ”¡É…Ý%À°½ÕÐ|°½ÕÐ¹½Éµ…±¥é•‘%À¤¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€ˆíÉ…Ý%Áôœ¥Ì¹½Ð„Ù…±¥%AØÐ…‘‘É•ÍÌ¸ˆ°€‰¡•¬%@…‘‘É•ÍÌˆ°4(€€€€€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€€€€€¥…±½I•ÍÕ±Ð€ô¥…±½I•ÍÕ±Ð¹9½¹”ì4(€€€€€€€€€€€€€€€É½Ü¹%Á‘‘É•ÍÌ¹½ÕÌ ¤ì4(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€¥˜€¡É…Ý5…Œ¹1•¹Ñ €ø€À€˜˜€…5…‘‘É•ÍÍQ•áÐ¹QÉåA…ÉÍ”¡É…Ý5…Œ°½ÕÐ¹½Éµ…±¥é•‘5…Œ¤¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°4(€€€€€€€€€€€€€€€€€€€€ˆíÉ…Ý5…ôœ¥Ì¹½Ð„Ù…±¥5…‘‘É•ÍÌ¸UÍ”€ÄÈ¡•á…‘•¥µ…°‘¥¥ÑÌì½±½¹Ì°¡åÁ¡•¹Ì°‘½ÑÌ°…¹ÍÁ…•Ì…É”…•ÁÑ•¸ˆ°4(€€€€€€€€€€€€€€€€€€€€‰¡•¬5…‘‘É•ÍÌˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€€€€€¥…±½I•ÍÕ±Ð€ô¥…±½I•ÍÕ±Ð¹9½¹”ì4(€€€€€€€€€€€€€€€É½Ü¹5…‘‘É•ÍÌ¹½ÕÌ ¤ì4(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€€€€€ô4(4(€€€€€€€€€€€Ù…È¥À€ôÉ…Ý%À¹1•¹Ñ €ôô€À€üÍÑÉ¥¹œ¹µÁÑä€è¹½Éµ…±¥é•‘%Àì4(€€€€€€€€€€€Ù…Èµ…Œ€ôÉ…Ý5…Œ¹1•¹Ñ €ôô€À€üÍÑÉ¥¹œ¹µÁÑä€è¹½Éµ…±¥é•‘5…Œì4(€€€€€€€€€€€Ù…ÈÑåÁ”€ôÉ½Ü¹QåÁ”¹M•±•Ñ•‘%Ñ•´¥Ì9•ÑÝ½É­%¹Ñ•É™…•QåÁ”Í•±•Ñ•‘QåÁ”4(€€€€€€€€€€€€€€€€üÍ•±•Ñ•‘QåÁ”4(€€€€€€€€€€€€€€€€è9•ÑÝ½É­%¹Ñ•É™…•QåÁ”¹5…¥¸ì4(€€€€€€€€€€€Á•¹‘¥¹œ¹‘ ¡É½Ü°¥À°µ…Œ°ÑåÁ”¤¤ì4(€€€€€€€ô4(€€€€€€€Ù…È‘ÕÁ±¥…Ñ•%À€ôÁ•¹‘¥¹œ¹]¡•É”¡¥Ñ•´€ôø¥Ñ•´¹%À¹1•¹Ñ €ø€À¤4(€€€€€€€€€€€€¹É½ÕÁ	ä¡¥Ñ•´€ôø¥Ñ•´¹%À°MÑÉ¥¹½µÁ…É•È¹=É‘¥¹…±%¹½É•…Í”¤4(€€€€€€€€€€€€¹¥ÉÍÑ=É•™…Õ±Ð¡É½ÕÀ€ôøÉ½ÕÀ¹½Õ¹Ð ¤€ø€Ä¤ì4(€€€€€€€¥˜€¡‘ÕÁ±¥…Ñ•%À¥Ì¹½Ð¹Õ±°¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰%@…‘‘É•ÍÌí‘ÕÁ±¥…Ñ•%À¹-•åô¥Ì±¥ÍÑ•µ½É”Ñ¡…¸½¹”½¸Ñ¡¥Ì‘•Ù¥”¸ˆ°4(€€€€€€€€€€€€€€€€‰ÕÁ±¥…Ñ”%@…‘‘É•ÍÌˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€¥…±½I•ÍÕ±Ð€ô¥…±½I•ÍÕ±Ð¹9½¹”ì4(€€€€€€€€€€€‘ÕÁ±¥…Ñ•%À¹¥ÉÍÐ ¤¹I½Ü¹%Á‘‘É•ÍÌ¹½ÕÌ ¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€ô4(4(€€€€€€€}Í½ÕÉ”¹•ÍÉ¥ÁÑ¥½¸€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹•ÍÉ¥ÁÑ¥½¸¤¤ì4(€€€€€€€}Í½ÕÉ”¹5…¹Õ™…ÑÕÉ•È€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹5…¹Õ™…ÑÕÉ•È¤¤ì4(€€€€€€€}Í½ÕÉ”¹A…ÉÑ9Õµ‰•È€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹A…ÉÑ9Õµ‰•È¤¤ì4(€€€€€€€}Í½ÕÉ”¹ÅÕ¥Áµ•¹Ñ%€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹ÅÕ¥Áµ•¹Ñ%¤¤ì4(€€€€€€€}Í½ÕÉ”¹!½ÍÑ¹…µ”€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹!½ÍÑ¹…µ”¤¤ì4(€€€€€€€}Í½ÕÉ”¹M•É¥…±9Õµ‰•È€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹M•É¥…±9Õµ‰•È¤¤ì4(€€€€€€€}Í½ÕÉ”¹¥ÉµÝ…É”€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹¥ÉµÝ…É”¤¤ì4(€€€€€€€Ù…È¥¹Ñ•É™…•Ì€ô¹•Ü1¥ÍÐñ9•ÑÝ½É­%¹Ñ•É™…•I•½Éø ¤ì4(€€€€€€€™½É•… €¡Ù…ÈÁ•¹‘¥¹%Ñ•´¥¸Á•¹‘¥¹œ¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…È¥Ñ•´€ôÁ•¹‘¥¹%Ñ•´¹I½Ü¹M½ÕÉ”ì4(€€€€€€€€€€€Ù…È¥À€ôÁ•¹‘¥¹%Ñ•´¹%Àì4(€€€€€€€€€€€Ù…Èµ…Œ€ôÁ•¹‘¥¹%Ñ•´¹5…Œì4(€€€€€€€€€€€Ù…ÈÑåÁ”€ôÁ•¹‘¥¹%Ñ•´¹QåÁ”ì4(€€€€€€€€€€€Ù…È¡…¹•€ô¥Ñ•´¹QåÁ”€„ôÑåÁ”ñð4(€€€€€€€€€€€€€€€€…ÍÑÉ¥¹œ¹ÅÕ…±Ì¡¥Ñ•´¹%Á‘‘É•ÍÌ°¥À°MÑÉ¥¹½µÁ…É¥Í½¸¹=É‘¥¹…±%¹½É•…Í”¤ñð4(€€€€€€€€€€€€€€€€…5…‘‘É•ÍÍQ•áÐ¹ÅÕ…±Í9½Éµ…±¥é•¡¥Ñ•´¹5…‘‘É•ÍÌ°µ…Œ¤€˜˜4(€€€€€€€€€€€€€€€€„¡ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡¥Ñ•´¹5…‘‘É•ÍÌ¤€˜˜ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡µ…Œ¤¤ì4(€€€€€€€€€€€¥Ñ•´¹QåÁ”€ôÑåÁ”ì4(€€€€€€€€€€€¥Ñ•´¹%Á‘‘É•ÍÌ€ô¥Àì4(€€€€€€€€€€€¥Ñ•´¹5…‘‘É•ÍÌ€ôµ…Œì4(€€€€€€€€€€€¥˜€¡¡…¹•¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€¥Ñ•´¹9•ÑÝ½É­MÑ…Ñ”€ô¥À¹1•¹Ñ €ôô€À€ü9•ÑÝ½É­MÑ…Ñ”¹9½‘‘É•ÍÌ€è9•ÑÝ½É­MÑ…Ñ”¹U¹­¹½Ý¸ì4(€€€€€€€€€€€€€€€¥Ñ•´¹1…ÍÑ¡•­•‘UÑŒ€ô¹Õ±°ì4(€€€€€€€€€€€€€€€¥Ñ•´¹1…ÍÑ1…Ñ•¹å5Ì€ô¹Õ±°ì4(€€€€€€€€€€€€€€€¥Ñ•´¹1…ÍÑ9•ÑÝ½É­ÉÉ½È€ô¥À¹1•¹Ñ €ôô€À€üÍÑÉ¥¹œ¹µÁÑä€è€‰]…¥Ñ¥¹œ™½Èµ…¹Õ…°Ù•É¥™¥…Ñ¥½¸¸ˆì4(€€€€€€€€€€€€€€€¥Ñ•´¹=‰Í•ÉÙ•‘5…‘‘É•ÍÌ€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€€€€€€€€€¥Ñ•´¹5…Y•É¥™¥…Ñ¥½¹5•ÍÍ…”€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€€€€€€€€€¥Ñ•´¹!ÑÑÁA½ÉÑ=Á•¸€ô™…±Í”ì4(€€€€€€€€€€€€€€€¥Ñ•´¹!ÑÑÁÍA½ÉÑ=Á•¸€ô™…±Í”ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€¥¹Ñ•É™…•Ì¹‘¡¥Ñ•´¤ì4(€€€€€€€ô4(€€€€€€€}Í½ÕÉ”¹9•ÑÝ½É­%¹Ñ•É™…•Ì€ô¥¹Ñ•É™…•Ìì4(€€€€€€€}Í½ÕÉ”¹MÕ‰¹•Ð€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹MÕ‰¹•Ð¤¤ì4(€€€€€€€}Í½ÕÉ”¹…Ñ•Ý…ä€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹…Ñ•Ý…ä¤¤ì4(€€€€€€€}Í½ÕÉ”¹M•É¥…±½¹¹•Ñ¥½¸€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹M•É¥…±½¹¹•Ñ¥½¸¤¤ì4(€€€€€€€}Í½ÕÉ”¹UÍ•É¹…µ”€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹UÍ•É¹…µ”¤¤ì4(€€€€€€€}Í½ÕÉ”¹A…ÍÍÝ½É€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹A…ÍÍÝ½É¤¤ì4(€€€€€€€}Í½ÕÉ”¹M½ÕÉ•¥±”€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹M½ÕÉ•¥±”¤¤ì4(€€€€€€€}Í½ÕÉ”¹9½Ñ•Ì€ôY…±Õ”¡¹…µ•½˜¡ÅÕ¥Áµ•¹ÑI•½É¹9½Ñ•Ì¤¤ì4(€€€€€€€}Í½ÕÉ”¹½¹™¥ÕÉ…Ñ¥½¹¥±•Ì€ô}½¹™¥ÕÉ…Ñ¥½¹¥±•Ì¹M•±•Ð¡±½¹•½¹™¥ÕÉ…Ñ¥½¹¥±”¤¹Q½1¥ÍÐ ¤ì4(€€€€€€€}Í½ÕÉ”¹UÁ‘…Ñ•‘UÑŒ€ô…Ñ•Q¥µ”¹UÑ9½Üì4(4(€€€€€€€}Í½ÕÉ”¹Må¹1•…å9•ÑÝ½É­¥•±‘Ì ¤ì4(€€€€€€€}Í½ÕÉ”¹UÁ‘…Ñ•É•…Ñ•9•ÑÝ½É­MÑ…Ñ” ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑÉ¥¹œY…±Õ”¡ÍÑÉ¥¹œ­•ä¤€ôø}™¥•±‘Ím­•åt¹Q•áÐ¹QÉ¥´ ¤ì4(4(€€€ÁÉ¥Ù…Ñ”Í•…±•±…ÍÌ9•ÑÝ½É­%¹Ñ•É™…•‘¥Ñ½ÉI½Ü4(€€€ì4(€€€€€€€ÁÕ‰±¥Œ9•ÑÝ½É­%¹Ñ•É™…•I•½ÉM½ÕÉ”ì•Ðìô4(€€€€€€€ÁÕ‰±¥ŒA…¹•°½¹Ñ…¥¹•Èì•Ðìô€ô¹•Ü ¤ì4(€€€€€€€ÁÕ‰±¥Œ½µ‰½	½àQåÁ”ì•Ðìô€ô¹•Ü ¤ì4(€€€€€€€ÁÕ‰±¥ŒQ•áÑ	½à%Á‘‘É•ÍÌì•Ðìô€ô¹•Ü ¤ì4(€€€€€€€ÁÕ‰±¥ŒQ•áÑ	½à5…‘‘É•ÍÌì•Ðìô€ô¹•Ü ¤ì4(€€€€€€€ÁÕ‰±¥Œ	ÕÑÑ½¸I•µ½Ù•	ÕÑÑ½¸ì•Ðìô4(4(€€€€€€€ÁÕ‰±¥Œ9•ÑÝ½É­%¹Ñ•É™…•‘¥Ñ½ÉI½Ü¡9•ÑÝ½É­%¹Ñ•É™…•I•½ÉÍ½ÕÉ”¤4(€€€€€€€ì4(€€€€€€€€€€€M½ÕÉ”€ôÍ½ÕÉ”ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹M¥é”€ô¹•ÜM¥é” ÜÄÀ°€äÈ¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹5…É¥¸€ô¹•ÜA…‘‘¥¹œ Ð°€È°€Ð°€à¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹	…­½±½È€ôU¥Q¡•µ”¹!•…‘•ÉMÕÉ™…”ì4(4(€€€€€€€€€€€‘‘1…‰•° ‰QeAˆ°€ÄÐ°€ÄÀ°€ÄÌÈ¤ì4(€€€€€€€€€€€‘‘1…‰•° ‰%@IMLˆ°€ÄÔà°€ÄÀ°€ÈÈÀ¤ì4(€€€€€€€€€€€‘‘1…‰•° ‰5IMLˆ°€ÌäÀ°€ÄÀ°€ÈÐÐ¤ì4(4(€€€€€€€€€€€QåÁ”¹É½Á½Ý¹MÑå±”€ô½µ‰½	½áMÑå±”¹É½Á½Ý¹1¥ÍÐì4(€€€€€€€€€€€QåÁ”¹%Ñ•µÌ¹‘‘I…¹”¡¹Õ´¹•ÑY…±Õ•Ìñ9•ÑÝ½É­%¹Ñ•É™…•QåÁ”ø ¤¹…ÍÐñ½‰©•Ðø ¤¹Q½ÉÉ…ä ¤¤ì4(€€€€€€€€€€€QåÁ”¹M•±•Ñ•‘%Ñ•´€ôÍ½ÕÉ”¹QåÁ”ì4(€€€€€€€€€€€QåÁ”¹1½…Ñ¥½¸€ô¹•ÜA½¥¹Ð ÄÐ°€ÌÐ¤ì4(€€€€€€€€€€€QåÁ”¹M¥é”€ô¹•ÜM¥é” ÄÌÈ°€Èä¤ì4(€€€€€€€€€€€QåÁ”¹½¹Ð€ôU¥Q¡•µ”¹½¹Ð ä¸Õ˜¤ì4(€€€€€€€€€€€U¥Q¡•µ”¹½¹™¥ÕÉ•U¹¥™½Éµ½µ‰½	½à¡QåÁ”¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹½¹ÑÉ½±Ì¹‘¡QåÁ”¤ì4(4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹Q•áÐ€ôÍ½ÕÉ”¹%Á‘‘É•ÍÌì4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹A±…•¡½±‘•ÉQ•áÐ€ô€‰%@…‘‘É•ÍÌˆì4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹•ÍÍ¥‰±•9…µ”€ô€‰%@…‘‘É•ÍÌˆì4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹1½…Ñ¥½¸€ô¹•ÜA½¥¹Ð ÄÔà°€ÌÐ¤ì4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹M¥é”€ô¹•ÜM¥é” ÈÈÀ°€Èä¤ì4(€€€€€€€€€€€%Á‘‘É•ÍÌ¹½¹Ð€ôU¥Q¡•µ”¹½¹Ð ä¸Õ˜¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹½¹ÑÉ½±Ì¹‘¡%Á‘‘É•ÍÌ¤ì4(4(€€€€€€€€€€€5…‘‘É•ÍÌ¹Q•áÐ€ôÍ½ÕÉ”¹5…‘‘É•ÍÌì4(€€€€€€€€€€€5…‘‘É•ÍÌ¹A±…•¡½±‘•ÉQ•áÐ€ô€‰5…‘‘É•ÍÌˆì4(€€€€€€€€€€€5…‘‘É•ÍÌ¹•ÍÍ¥‰±•9…µ”€ô€‰5…‘‘É•ÍÌˆì4(€€€€€€€€€€€5…‘‘É•ÍÌ¹1½…Ñ¥½¸€ô¹•ÜA½¥¹Ð ÌäÀ°€ÌÐ¤ì4(€€€€€€€€€€€5…‘‘É•ÍÌ¹M¥é”€ô¹•ÜM¥é” ÈÐÐ°€Èä¤ì4(€€€€€€€€€€€5…‘‘É•ÍÌ¹½¹Ð€ôU¥Q¡•µ”¹½¹Ð ä¸Õ˜¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹½¹ÑÉ½±Ì¹‘¡5…‘‘É•ÍÌ¤ì4(4(€€€€€€€€€€€I•µ½Ù•	ÕÑÑ½¸€ôU¥Q¡•µ”¹…¹•É	ÕÑÑ½¸ ‹\ˆ¤ì4(€€€€€€€€€€€I•µ½Ù•	ÕÑÑ½¸¹ÕÑ½M¥é”€ô™…±Í”ì4(€€€€€€€€€€€I•µ½Ù•	ÕÑÑ½¸¹M¥é”€ô¹•ÜM¥é” ÐÈ°€ÌÀ¤ì4(€€€€€€€€€€€I•µ½Ù•	ÕÑÑ½¸¹1½…Ñ¥½¸€ô¹•ÜA½¥¹Ð ØÔÀ°€ÌÌ¤ì4(€€€€€€€€€€€I•µ½Ù•	ÕÑÑ½¸¹½¹Ð€ôU¥Q¡•µ”¹½¹Ð ÄÌ°½¹ÑMÑå±”¹	½±¤ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹½¹ÑÉ½±Ì¹‘¡I•µ½Ù•	ÕÑÑ½¸¤ì4(€€€€€€€ô4(4(€€€€€€€ÁÉ¥Ù…Ñ”Ù½¥‘‘1…‰•°¡ÍÑÉ¥¹œÑ•áÐ°¥¹Ð±•™Ð°¥¹ÐÑ½À°¥¹ÐÝ¥‘Ñ ¤4(€€€€€€€ì4(€€€€€€€€€€€½¹Ñ…¥¹•È¹½¹ÑÉ½±Ì¹‘¡¹•Ü1…‰•°4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€Q•áÐ€ôÑ•áÐ°4(€€€€€€€€€€€€€€€ÕÑ½M¥é”€ô™…±Í”°4(€€€€€€€€€€€€€€€M¥é”€ô¹•ÜM¥é”¡Ý¥‘Ñ °€Äà¤°4(€€€€€€€€€€€€€€€1½…Ñ¥½¸€ô¹•ÜA½¥¹Ð¡±•™Ð°Ñ½À¤°4(€€€€€€€€€€€€€€€½¹Ð€ôU¥Q¡•µ”¹½¹Ð à°½¹ÑMÑå±”¹	½±¤°4(€€€€€€€€€€€€€€€½É•½±½È€ôU¥Q¡•µ”¹5ÕÑ•°4(€€€€€€€€€€€€€€€Q•áÑ±¥¸€ô½¹Ñ•¹Ñ±¥¹µ•¹Ð¹5¥‘‘±•1•™Ð4(€€€€€€€€€€€ô¤ì4(€€€€€€€ô4(€€€ô4)ô4(

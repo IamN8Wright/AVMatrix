@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class InNascGlobalAdminForm : Form
 {
@@ -85,6 +85,12 @@ internal sealed class InNascGlobalAdminForm : Form
         add.Location = new Point(0, 40);
         add.Click += (_, _) => CreateCompany();
         panel.Controls.Add(add);
+        var migrate = UiTheme.SecondaryButton("Migrate .avmatrix…");
+        migrate.AutoSize = false;
+        migrate.Size = new Size(156, 36);
+        migrate.Location = new Point(158, 40);
+        migrate.Click += (_, _) => MigrateLegacyCompany();
+        panel.Controls.Add(migrate);
         _companies.Location = new Point(0, 91);
         _companies.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _companies.Size = new Size(660, 430);
@@ -233,7 +239,7 @@ internal sealed class InNascGlobalAdminForm : Form
         try
         {
             var company = InNascGlobalCoreService.CreateCompany(
-                _globalPath, _catalog, _session, form.CompanyName, form.CompanyPath);
+                _globalPath, _catalog, _session, form.EnteredCompanyName, form.CompanyPath);
             _status.Text = $"Created {company.Name}: {company.FilePath}";
             RefreshAll();
         }
@@ -254,6 +260,68 @@ internal sealed class InNascGlobalAdminForm : Form
             RefreshAll();
         }
         catch (Exception exception) { ShowError("Add user", exception); }
+    }
+
+    private void MigrateLegacyCompany()
+    {
+        using var sourceDialog = new OpenFileDialog
+        {
+            Title = "Migrate legacy AV Matrix company",
+            Filter = "Legacy AV Matrix company (*.avmatrix)|*.avmatrix|All files (*.*)|*.*"
+        };
+        if (sourceDialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            var sourceBytes = File.ReadAllBytes(sourceDialog.FileName);
+            string? legacyPasswordOrKey = null;
+            if (PortableDataService.IsAccountProtected(sourceBytes))
+            {
+                var access = PortableDataService.ReadMasterAccess(sourceBytes);
+                var legacySession = MasterSignInForm.Prompt(this, access);
+                if (legacySession is null) return;
+                legacyPasswordOrKey = legacySession.MasterKey;
+            }
+            else if (PortableDataService.IsPasswordProtected(sourceBytes))
+            {
+                legacyPasswordOrKey = LegacyMasterMigrationForm.Prompt(this);
+                if (legacyPasswordOrKey is null) return;
+            }
+
+            var suggestedName = Path.GetFileNameWithoutExtension(sourceDialog.FileName);
+            var companyName = InputDialog.Show(
+                this,
+                "Migrate legacy company",
+                "Company name",
+                suggestedName);
+            if (companyName is null) return;
+
+            using var destinationDialog = new SaveFileDialog
+            {
+                Title = "Save migrated InNasc company",
+                Filter = "InNasc company (*.nasc)|*.nasc",
+                DefaultExt = "nasc",
+                AddExtension = true,
+                FileName = suggestedName + ".nasc",
+                InitialDirectory = Path.GetDirectoryName(sourceDialog.FileName)
+            };
+            if (destinationDialog.ShowDialog(this) != DialogResult.OK) return;
+
+            var company = InNascGlobalCoreService.MigrateLegacyCompany(
+                _globalPath,
+                _catalog,
+                _session,
+                companyName,
+                sourceDialog.FileName,
+                destinationDialog.FileName,
+                legacyPasswordOrKey);
+            _status.Text = $"Migrated {company.Name} to {company.FilePath}. The original .avmatrix file was not changed.";
+            RefreshAll();
+        }
+        catch (Exception exception)
+        {
+            ShowError("Migrate legacy company", exception);
+        }
     }
 
     private void EditAccess()

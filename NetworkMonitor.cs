@@ -3,7 +3,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 public static class NetworkAdapterService
 {
@@ -252,7 +252,7 @@ internal static class SourceBoundIcmp
         if (handle == IntPtr.Zero || handle == InvalidHandleValue)
             return new PingCheckResult(false, 0, $"Unable to create ICMP handle ({Marshal.GetLastWin32Error()}).");
 
-        var payload = System.Text.Encoding.ASCII.GetBytes("AVMatrixStudio");
+        var payload = System.Text.Encoding.ASCII.GetBytes("InNasc");
         var options = new IpOptionInformation { Ttl = 64 };
         var replySize = (uint)(Marshal.SizeOf<IcmpEchoReply>() + payload.Length + 16);
         var replyBuffer = Marshal.AllocHGlobal((int)replySize);

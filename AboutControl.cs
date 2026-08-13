@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class AboutControl : UserControl
 {
@@ -25,25 +25,14 @@ internal sealed class AboutControl : UserControl
         };
         var appLogo = new PictureBox
         {
-            Image = AppBrand.CreateLogo(),
+            Image = AppBrand.CreatePrimaryHorizontal(),
             SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Color.Transparent,
-            Location = new Point(270, 16),
-            Size = new Size(180, 125),
+            BackColor = Color.White,
+            Location = new Point(70, 16),
+            Size = new Size(580, 183),
             TabStop = false
         };
         card.Controls.Add(appLogo);
-
-        card.Controls.Add(CenteredLabel(
-            "AV Matrix Studio",
-            UiTheme.Font(25, FontStyle.Bold),
-            UiTheme.Text,
-            new Rectangle(28, 142, 664, 43)));
-        card.Controls.Add(CenteredLabel(
-            "Client-centered AV inventory and network verification",
-            UiTheme.Font(10),
-            UiTheme.Muted,
-            new Rectangle(28, 184, 664, 28)));
 
         card.Controls.Add(new Panel
         {
@@ -79,6 +68,20 @@ internal sealed class AboutControl : UserControl
             UiTheme.Font(9.5f),
             UiTheme.Muted,
             new Rectangle(286, 328, 386, 74)));
+
+        var website = new LinkLabel
+        {
+            Text = "InNasc.com",
+            Font = UiTheme.Font(10, FontStyle.Bold),
+            LinkColor = UiTheme.Blue,
+            ActiveLinkColor = UiTheme.BlueHover,
+            Location = new Point(286, 402),
+            Size = new Size(160, 26),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        website.LinkClicked += (_, _) => System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo(AppInfo.Website) { UseShellExecute = true });
+        card.Controls.Add(website);
 
         var update = UiTheme.PrimaryButton("Check for app update");
         update.AutoSize = false;

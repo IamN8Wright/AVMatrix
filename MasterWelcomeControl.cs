@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class MasterWelcomeControl : UserControl
 {
@@ -75,14 +75,9 @@ internal sealed class MasterWelcomeControl : UserControl
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
-        var logo = new PictureBox
+        var logo = new InNascBrandLogo(124, 112)
         {
-            Image = AppBrand.CreateLogo(),
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Color.Transparent,
-            Size = new Size(124, 112),
-            Anchor = AnchorStyles.None,
-            TabStop = false
+            Anchor = AnchorStyles.None
         };
         heading.Controls.Add(logo, 0, 0);
 
@@ -99,7 +94,7 @@ internal sealed class MasterWelcomeControl : UserControl
 
         heading.Controls.Add(new Label
         {
-            Text = "Choose a Master Matrix, then sign in once for this app session.",
+            Text = "Choose a company workspace, then sign in once for this app session.",
             Dock = DockStyle.Fill,
             Font = UiTheme.Font(10.5f),
             ForeColor = UiTheme.Muted,
@@ -213,7 +208,7 @@ internal sealed class MasterWelcomeControl : UserControl
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.Controls.Add(new Label
         {
-            Text = "SIGN IN TO MASTER MATRIX",
+            Text = "SIGN IN TO COMPANY",
             Dock = DockStyle.Fill,
             Font = UiTheme.Font(8.5f, FontStyle.Bold),
             ForeColor = UiTheme.Muted,

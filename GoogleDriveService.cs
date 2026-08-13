@@ -7,11 +7,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class GoogleDriveService
 {
-    private const string CredentialTarget = "AVMatrixStudio/GoogleDrive";
+    private const string CredentialTarget = "InNasc/GoogleDrive";
+    private const string LegacyCredentialTarget = "AVMatrixStudio/GoogleDrive";
     private const string DriveScope = "https://www.googleapis.com/auth/drive";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -89,8 +90,8 @@ internal static class GoogleDriveService
             var success = query.TryGetValue("state", out var returnedState) && returnedState == state &&
                           !string.IsNullOrWhiteSpace(code);
             var responseHtml = success
-                ? "<h2>AV Matrix Studio is connected.</h2><p>You may close this browser window.</p>"
-                : "<h2>Google Drive connection was not completed.</h2><p>Return to AV Matrix Studio for details.</p>";
+                ? "<h2>InNasc is connected.</h2><p>You may close this browser window.</p>"
+                : "<h2>Google Drive connection was not completed.</h2><p>Return to InNasc for details.</p>";
             var responseBytes = Encoding.UTF8.GetBytes(responseHtml);
             var header = Encoding.ASCII.GetBytes(
                 $"HTTP/1.1 {(success ? "200 OK" : "400 Bad Request")}\r\n" +
@@ -129,7 +130,11 @@ internal static class GoogleDriveService
         }
     }
 
-    public static void Disconnect() => WindowsCredentialStore.Delete(CredentialTarget);
+    public static void Disconnect()
+    {
+        WindowsCredentialStore.Delete(CredentialTarget);
+        WindowsCredentialStore.Delete(LegacyCredentialTarget);
+    }
 
     public static string ParseFileId(string shareLink)
     {
@@ -246,7 +251,7 @@ internal static class GoogleDriveService
             parents = new[] { parent },
             mimeType = "application/octet-stream"
         });
-        using var multipart = new MultipartContent("related", "avmatrix_" + Guid.NewGuid().ToString("N"));
+        using var multipart = new MultipartContent("related", "innasc_" + Guid.NewGuid().ToString("N"));
         var metadataContent = new StringContent(metadataJson, Encoding.UTF8, "application/json");
         var fileContent = new ByteArrayContent(contents);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
@@ -421,6 +426,12 @@ internal static class GoogleDriveService
     private static GoogleCredentialPayload? ReadCredential()
     {
         var json = WindowsCredentialStore.Read(CredentialTarget);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            json = WindowsCredentialStore.Read(LegacyCredentialTarget);
+            if (!string.IsNullOrWhiteSpace(json))
+                WindowsCredentialStore.Write(CredentialTarget, json);
+        }
         return string.IsNullOrWhiteSpace(json)
             ? null
             : JsonSerializer.Deserialize<GoogleCredentialPayload>(json, JsonOptions);

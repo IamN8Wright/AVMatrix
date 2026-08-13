@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class InNascGlobalConfig
 {

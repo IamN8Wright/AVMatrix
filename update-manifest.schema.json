@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AV Matrix Studio Update Manifest",
+  "title": "InNasc Update Manifest",
   "type": "object",
   "required": ["version", "releaseTag", "assetName", "sha256", "publishedAt"],
   "properties": {

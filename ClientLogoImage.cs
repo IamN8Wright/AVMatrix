@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class ClientLogoImage
 {

@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class InNascStartupForm : Form
 {
@@ -29,6 +29,10 @@ internal sealed class InNascStartupForm : Form
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
 
+        Controls.Add(new InNascBrandLogo(76, 76)
+        {
+            Location = new Point(302, 22)
+        });
         Controls.Add(new Label
         {
             Text = "InNasc",

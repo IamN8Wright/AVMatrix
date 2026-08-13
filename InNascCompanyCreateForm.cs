@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class InNascCompanyCreateForm : Form
 {
@@ -6,7 +6,7 @@ internal sealed class InNascCompanyCreateForm : Form
     private readonly TextBox _path = new();
     private readonly Label _error = new();
 
-    public string CompanyName => _name.Text.Trim();
+    public string EnteredCompanyName => _name.Text.Trim();
     public string CompanyPath => _path.Text.Trim();
 
     public InNascCompanyCreateForm()
@@ -24,7 +24,7 @@ internal sealed class InNascCompanyCreateForm : Form
 
         Controls.Add(InNascGlobalSetupForm.TitleLabel("Create company", 28, 22, 18, true));
         Controls.Add(InNascGlobalSetupForm.Description(
-            "Each company is stored in its own encrypted .nasc file. The company keeps the same client, location, room, equipment, checkout, and sync structure used by AV Matrix.",
+            "Each company is stored in its own encrypted .nasc file with its clients, locations, rooms, equipment, checkouts, and sync history.",
             30, 58, 510, 58));
 
         Controls.Add(InNascGlobalSetupForm.TitleLabel("Company name", 30, 130, 8.5f, true));
@@ -73,25 +73,25 @@ internal sealed class InNascCompanyCreateForm : Form
             Filter = "InNasc company (*.nasc)|*.nasc",
             DefaultExt = "nasc",
             AddExtension = true,
-            FileName = SafeName(CompanyName) + ".nasc"
+            FileName = SafeName(EnteredCompanyName) + ".nasc"
         };
         if (dialog.ShowDialog(this) == DialogResult.OK) _path.Text = dialog.FileName;
     }
 
     private void SuggestFileName()
     {
-        if (_path.Focused || string.IsNullOrWhiteSpace(CompanyName)) return;
+        if (_path.Focused || string.IsNullOrWhiteSpace(EnteredCompanyName)) return;
         var config = InNascGlobalConfigStore.Load();
         var directory = string.IsNullOrWhiteSpace(config.GlobalPath)
             ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
             : Path.GetDirectoryName(config.GlobalPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        _path.Text = Path.Combine(directory, SafeName(CompanyName) + ".nasc");
+        _path.Text = Path.Combine(directory, SafeName(EnteredCompanyName) + ".nasc");
     }
 
     private void ValidateAndClose()
     {
         _error.Text = string.Empty;
-        if (CompanyName.Length == 0) { _error.Text = "Enter a company name."; return; }
+        if (EnteredCompanyName.Length == 0) { _error.Text = "Enter a company name."; return; }
         if (CompanyPath.Length == 0) { _error.Text = "Choose a .nasc file location."; return; }
         try { _path.Text = InNascFileTypes.ValidateNewCompanyPath(CompanyPath); }
         catch (Exception exception) { _error.Text = exception.Message; return; }

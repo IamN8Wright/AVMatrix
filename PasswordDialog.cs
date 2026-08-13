@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record PasswordPromptResult(string? Password, bool RememberForSession);
 
@@ -40,7 +40,7 @@ internal sealed class PasswordDialog : Form
         {
             Text = creating
                 ? "Protected files are automatically encrypted as compact JWE.\r\nThe password cannot be recovered if it is lost."
-                : "This .avmatrix file is encrypted. Enter its password to continue.",
+                : "This company file is encrypted. Enter its password to continue.",
             AutoSize = true,
             Font = UiTheme.Font(9.2f),
             ForeColor = UiTheme.Muted,

@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record InNascGlobalLogin(InNascGlobalSession Session, InNascGlobalCatalog Catalog);
 
@@ -144,6 +144,61 @@ internal static class InNascGlobalCoreService
         }
     }
 
+    public static InNascCompanyRecord MigrateLegacyCompany(
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        string companyName,
+        string legacyPath,
+        string destinationPath,
+        string? legacyPasswordOrKey)
+    {
+        RequireAdmin(catalog, session);
+        var name = ValidateCompanyName(catalog, companyName);
+        var source = Path.GetFullPath(legacyPath.Trim());
+        if (!InNascFileTypes.IsLegacyCompanyPath(source))
+            throw new InvalidDataException("Choose a legacy .avmatrix company file.");
+        if (!File.Exists(source))
+            throw new FileNotFoundException("The legacy company file could not be found.", source);
+
+        var destination = InNascFileTypes.ValidateNewCompanyPath(destinationPath);
+        if (File.Exists(destination))
+            throw new IOException("That InNasc company file already exists.");
+
+        var imported = PortableDataService.Import(source, legacyPasswordOrKey).Data;
+        var company = new InNascCompanyRecord
+        {
+            Name = name,
+            FilePath = destination,
+            CompanyKeyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        };
+        catalog.Companies.Add(company);
+        try
+        {
+            imported.ProjectName = name;
+            imported.MasterAccess = BuildCompanyAccess(catalog, company.Id);
+            var companySession = CreateCompanySession(session, catalog, company);
+            PortableDataService.ExportMaster(
+                destination,
+                ClientSubmatrixService.MasterMetadataOnly(imported),
+                companySession);
+            MigrateLegacyClientPayloads(
+                source,
+                destination,
+                imported,
+                legacyPasswordOrKey,
+                company.CompanyKeyBase64);
+            Save(globalPath, catalog, session);
+            return company;
+        }
+        catch
+        {
+            catalog.Companies.Remove(company);
+            TryDeleteMigratedCompany(destination);
+            throw;
+        }
+    }
+
     public static void SetMembership(
         string path, InNascGlobalCatalog catalog, InNascGlobalSession session,
         Guid userId, Guid companyId, bool assigned, MasterUserRole role)
@@ -213,6 +268,46 @@ internal static class InNascGlobalCoreService
             });
         }
         return access;
+    }
+
+    private static string ValidateCompanyName(InNascGlobalCatalog catalog, string companyName)
+    {
+        var name = companyName.Trim();
+        if (name.Length == 0) throw new InvalidOperationException("Enter a company name.");
+        if (catalog.Companies.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("A company with that name already exists.");
+        return name;
+    }
+
+    private static void MigrateLegacyClientPayloads(
+        string legacyPath,
+        string destinationPath,
+        AppData imported,
+        string? legacyPasswordOrKey,
+        string companyKey)
+    {
+        foreach (var client in imported.Clients)
+        {
+            var sourceClientPath = ClientSubmatrixService.SharedClientPath(legacyPath, client.Id);
+            if (!File.Exists(sourceClientPath)) continue;
+            var package = PortableDataService.Import(sourceClientPath, legacyPasswordOrKey).Data;
+            var destinationClientPath = ClientSubmatrixService.SharedClientPath(destinationPath, client.Id);
+            PortableDataService.Export(destinationClientPath, package, companyKey);
+        }
+    }
+
+    private static void TryDeleteMigratedCompany(string destinationPath)
+    {
+        try
+        {
+            if (File.Exists(destinationPath)) File.Delete(destinationPath);
+            var payloadDirectory = ClientSubmatrixService.SharedDirectory(destinationPath);
+            if (Directory.Exists(payloadDirectory)) Directory.Delete(payloadDirectory, true);
+        }
+        catch
+        {
+            // Preserve the original migration error; partial output can be removed manually.
+        }
     }
 
     private static InNascGlobalLogin Login(InNascGlobalUserRecord user, string key, InNascGlobalCatalog catalog) =>

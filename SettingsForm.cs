@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class SettingsForm : Form
 {
@@ -225,7 +225,7 @@ internal sealed class SettingsForm : Form
             Filter = "InNasc company backup (*.nasc)|*.nasc",
             DefaultExt = "nasc",
             AddExtension = true,
-            FileName = $"AV-Matrix-Transfer-{DateTime.Now:yyyy-MM-dd}.nasc"
+            FileName = $"InNasc-Company-{DateTime.Now:yyyy-MM-dd}.nasc"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         var protection = PasswordDialog.PromptForNewFile(this);

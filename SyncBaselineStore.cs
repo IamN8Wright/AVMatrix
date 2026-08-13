@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal enum SyncTarget
 {
@@ -12,10 +12,10 @@ internal enum SyncTarget
 internal static class SyncBaselineStore
 {
     public static string SharedPath(DataStore store) =>
-        Path.Combine(store.DataDirectory, "SharedMasterBaseline.avmatrix");
+        Path.Combine(store.DataDirectory, "SharedCompanyBaseline.nasc");
 
     public static string GoogleDrivePath(DataStore store) =>
-        Path.Combine(store.DataDirectory, "GoogleDriveMasterBaseline.avmatrix");
+        Path.Combine(store.DataDirectory, "GoogleDriveCompanyBaseline.nasc");
 
     public static void Save(
         DataStore store,
@@ -58,8 +58,10 @@ internal static class SyncBaselineStore
 
     public static void Delete(DataStore store, SyncTarget target)
     {
-        var path = PathFor(store, target);
+        var path = ReadPathFor(store, target);
         if (File.Exists(path)) File.Delete(path);
+        var legacyPath = LegacyPathFor(store, target);
+        if (File.Exists(legacyPath)) File.Delete(legacyPath);
     }
 
     public static string Fingerprint(byte[] contents) =>
@@ -69,6 +71,21 @@ internal static class SyncBaselineStore
     {
         SyncTarget.SharedFile => SharedPath(store),
         SyncTarget.GoogleDrive => GoogleDrivePath(store),
+        _ => throw new ArgumentOutOfRangeException(nameof(target))
+    };
+
+    private static string ReadPathFor(DataStore store, SyncTarget target)
+    {
+        var current = PathFor(store, target);
+        if (File.Exists(current)) return current;
+        var legacy = LegacyPathFor(store, target);
+        return File.Exists(legacy) ? legacy : current;
+    }
+
+    private static string LegacyPathFor(DataStore store, SyncTarget target) => target switch
+    {
+        SyncTarget.SharedFile => Path.Combine(store.DataDirectory, "SharedMasterBaseline.avmatrix"),
+        SyncTarget.GoogleDrive => Path.Combine(store.DataDirectory, "GoogleDriveMasterBaseline.avmatrix"),
         _ => throw new ArgumentOutOfRangeException(nameof(target))
     };
 }

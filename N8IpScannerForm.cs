@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed class N8IpScannerForm : Form
 {
@@ -385,465 +385,4 @@ internal sealed class N8IpScannerForm : Form
         {
             MessageBox.Show(this, "Choose an active IPv4 network adapter.", "N8's IP Scanner",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        if (!CidrRange.TryParse(_cidr.Text, out var range, out var error))
-        {
-            MessageBox.Show(this, error, "Invalid CIDR range", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        if (range.HostCount > 65_536)
-        {
-            MessageBox.Show(this, "This build scans up to 65,536 addresses at once. Choose a /16 or smaller range.",
-                "Range too large", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-
-        ClearResults();
-        _scanCancellation = new CancellationTokenSource();
-        var token = _scanCancellation.Token;
-        _scanButton.Enabled = false;
-        _cancelButton.Enabled = true;
-        _nicPicker.Enabled = false;
-        _progress.Minimum = 0;
-        _progress.Maximum = Math.Max(1, range.HostCount);
-        _progress.Value = 0;
-        _progressLabel.Text = $"Scanning {range.HostCount:N0} addresses from {nic.Ipv4Address}â€¦";
-        var found = new ConcurrentBag<ScannerResult>();
-        var completed = 0;
-        var stride = Math.Max(1, range.HostCount / 250);
-        using var limit = new SemaphoreSlim(128);
-
-        try
-        {
-            var tasks = range.Addresses().Select(async address =>
-            {
-                await limit.WaitAsync(token);
-                try
-                {
-                    var result = await ScanAddressAsync(address, IPAddress.Parse(nic.Ipv4Address), token);
-                    if (result is not null) found.Add(result);
-                }
-                finally
-                {
-                    limit.Release();
-                    var done = Interlocked.Increment(ref completed);
-                    if (done % stride == 0 || done == range.HostCount)
-                        BeginInvoke(new Action(() =>
-                        {
-                            _progress.Value = Math.Min(_progress.Maximum, done);
-                            _progressLabel.Text = $"Scanned {done:N0} of {range.HostCount:N0}  â€¢  Found {found.Count:N0}";
-                        }));
-                }
-            }).ToList();
-            await Task.WhenAll(tasks);
-        }
-        catch (OperationCanceledException)
-        {
-            _progressLabel.Text = $"Scan canceled after {completed:N0} addresses";
-        }
-        finally
-        {
-            var arp = ArpTable.Read();
-            _results.Clear();
-            foreach (var result in found.OrderBy(item => CidrRange.ToUInt32(IPAddress.Parse(item.IpAddress))))
-            {
-                var mac = arp.GetValueOrDefault(result.IpAddress, string.Empty);
-                _results.Add(result with
-                {
-                    MacAddress = mac,
-                    Manufacturer = OuiLookup.Find(mac)
-                });
-            }
-            PopulateGrid();
-            if (!token.IsCancellationRequested)
-            {
-                _progress.Value = _progress.Maximum;
-                _progressLabel.Text = $"Scan complete  â€¢  {_results.Count:N0} device(s) found";
-            }
-            _scanCancellation.Dispose();
-            _scanCancellation = null;
-            _scanButton.Enabled = true;
-            _cancelButton.Enabled = false;
-            _nicPicker.Enabled = true;
-        }
-    }
-
-    private static async Task<ScannerResult?> ScanAddressAsync(
-        IPAddress address,
-        IPAddress source,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var pingTask = Task.Run(() => SourceBoundIcmp.Ping(source, address, 700), cancellationToken);
-        var httpTask = CanConnectAsync(source, address, 80, 650, cancellationToken);
-        var httpsTask = CanConnectAsync(source, address, 443, 650, cancellationToken);
-        await Task.WhenAll(pingTask, httpTask, httpsTask);
-        var ping = await pingTask;
-        var http = await httpTask;
-        var https = await httpsTask;
-        if (!ping.Success && !http && !https) return null;
-
-        var hostname = string.Empty;
-        try
-        {
-            var lookup = Dns.GetHostEntryAsync(address);
-            hostname = (await lookup.WaitAsync(TimeSpan.FromMilliseconds(700), cancellationToken)).HostName;
-        }
-        catch
-        {
-            // Reverse DNS is optional.
-        }
-        var status = (http, https) switch
-        {
-            (true, true) => "HTTP / HTTPS",
-            (true, false) => "HTTP",
-            (false, true) => "HTTPS",
-            _ => "Online"
-        };
-        return new ScannerResult(
-            address.ToString(), hostname, string.Empty, string.Empty, status,
-            ping.Success ? $"{ping.RoundtripMilliseconds} ms" : string.Empty,
-            http, https);
-    }
-
-    private static async Task<bool> CanConnectAsync(
-        IPAddress source,
-        IPAddress destination,
-        int port,
-        int timeoutMilliseconds,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(timeoutMilliseconds);
-        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        try
-        {
-            socket.Bind(new IPEndPoint(source, 0));
-            await socket.ConnectAsync(new IPEndPoint(destination, port), timeout.Token);
-            return true;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (SocketException)
-        {
-            return false;
-        }
-    }
-
-    private void PopulateGrid()
-    {
-        _grid.Rows.Clear();
-        foreach (var result in _results)
-        {
-            var rowIndex = _grid.Rows.Add(result.IpAddress, result.Hostname, result.MacAddress,
-                result.Manufacturer, result.Status, result.Latency);
-            _grid.Rows[rowIndex].Tag = result;
-            _grid.Rows[rowIndex].Cells[4].Style.ForeColor = result.Status == "Online" ? UiTheme.Green : UiTheme.Blue;
-            _grid.Rows[rowIndex].Cells[4].Style.Font = UiTheme.Font(9, FontStyle.Bold);
-        }
-    }
-
-    private void ClearResults()
-    {
-        if (_scanCancellation is not null) return;
-        _results.Clear();
-        _grid.Rows.Clear();
-        _progress.Value = 0;
-        _progressLabel.Text = "Ready to scan";
-    }
-
-    private void Grid_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
-    {
-        if (e.RowIndex < 0 || _grid.Rows[e.RowIndex].Tag is not ScannerResult result) return;
-        var scheme = result.HttpsOpen ? "https" : result.HttpOpen ? "http" : null;
-        if (scheme is null)
-        {
-            MessageBox.Show(this, "This device did not expose HTTP or HTTPS during the scan.",
-                "Open device", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        try
-        {
-            Process.Start(new ProcessStartInfo($"{scheme}://{result.IpAddress}") { UseShellExecute = true });
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "Open device", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private void ExportCsv()
-    {
-        if (_results.Count == 0)
-        {
-            MessageBox.Show(this, "Run a scan before exporting results.", "Export CSV",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        using var dialog = new SaveFileDialog
-        {
-            Filter = "CSV file (*.csv)|*.csv",
-            FileName = $"N8-IP-Scan-{DateTime.Now:yyyy-MM-dd-HHmm}.csv"
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var lines = new List<string> { "IP Address,Hostname,MAC Address,Manufacturer,Status,Latency" };
-        lines.AddRange(_results.Select(item => string.Join(',',
-            Csv(item.IpAddress), Csv(item.Hostname), Csv(item.MacAddress), Csv(item.Manufacturer),
-            Csv(item.Status), Csv(item.Latency))));
-        File.WriteAllLines(dialog.FileName, lines, new UTF8Encoding(true));
-    }
-
-    private static string Csv(string value) => $"\"{value.Replace("\"", "\"\"")}\"";
-
-    private async Task ApplyStaticSettingsAsync()
-    {
-        if (_nicPicker.SelectedItem is not ScannerNicChoice nic) return;
-        if (!ValidIpv4(_ipAddress.Text, required: true) || !ValidIpv4(_subnetMask.Text, required: true) ||
-            !ValidIpv4(_gateway.Text, required: false) || !ValidIpv4(_primaryDns.Text, required: false) ||
-            !ValidIpv4(_secondaryDns.Text, required: false))
-        {
-            MessageBox.Show(this, "Review the IP address, subnet mask, gateway, and DNS values.",
-                "Invalid network setting", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        if (!SafeInterfaceName(nic.NicName)) return;
-        var gateway = string.IsNullOrWhiteSpace(_gateway.Text) ? "none" : _gateway.Text.Trim();
-        var lines = new List<string>
-        {
-            $"netsh interface ipv4 set address name=\"{nic.NicName}\" source=static address={_ipAddress.Text.Trim()} mask={_subnetMask.Text.Trim()} gateway={gateway}"
-        };
-        if (!string.IsNullOrWhiteSpace(_primaryDns.Text))
-        {
-            lines.Add($"netsh interface ipv4 set dnsservers name=\"{nic.NicName}\" source=static address={_primaryDns.Text.Trim()} validate=no");
-            if (!string.IsNullOrWhiteSpace(_secondaryDns.Text))
-                lines.Add($"netsh interface ipv4 add dnsservers name=\"{nic.NicName}\" address={_secondaryDns.Text.Trim()} index=2 validate=no");
-        }
-        if (await RunElevatedCommandsAsync(lines)) LoadNetworkAdapters();
-    }
-
-    private async Task SetDhcpAsync()
-    {
-        if (_nicPicker.SelectedItem is not ScannerNicChoice nic || !SafeInterfaceName(nic.NicName)) return;
-        var lines = new[]
-        {
-            $"netsh interface ipv4 set address name=\"{nic.NicName}\" source=dhcp",
-            $"netsh interface ipv4 set dnsservers name=\"{nic.NicName}\" source=dhcp"
-        };
-        if (await RunElevatedCommandsAsync(lines)) LoadNetworkAdapters();
-    }
-
-    private async Task<bool> RunElevatedCommandsAsync(IEnumerable<string> commands)
-    {
-        var commandFile = Path.Combine(Path.GetTempPath(), $"n8-ip-scanner-{Guid.NewGuid():N}.cmd");
-        try
-        {
-            File.WriteAllLines(commandFile, ["@echo off", .. commands, "exit /b %errorlevel%"], Encoding.ASCII);
-            var process = Process.Start(new ProcessStartInfo(commandFile)
-            {
-                UseShellExecute = true,
-                Verb = "runas",
-                WorkingDirectory = Path.GetTempPath(),
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
-            if (process is null) return false;
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                MessageBox.Show(this, $"Windows returned exit code {process.ExitCode} while changing the adapter.",
-                    "NIC settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-            MessageBox.Show(this, "The network adapter settings were updated.", "NIC settings",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return true;
-        }
-        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
-        {
-            return false;
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "NIC settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return false;
-        }
-        finally
-        {
-            try { if (File.Exists(commandFile)) File.Delete(commandFile); } catch { }
-        }
-    }
-
-    private bool SafeInterfaceName(string name)
-    {
-        if (name.IndexOfAny(['\r', '\n', '"', '&', '|', '<', '>']) < 0) return true;
-        MessageBox.Show(this, "This network adapter name contains characters that cannot be passed safely to Windows.",
-            "NIC settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        return false;
-    }
-
-    private static bool ValidIpv4(string value, bool required) =>
-        string.IsNullOrWhiteSpace(value) ? !required : Ipv4AddressText.TryParse(value, out _, out _);
-}
-
-internal sealed record ScannerResult(
-    string IpAddress,
-    string Hostname,
-    string MacAddress,
-    string Manufacturer,
-    string Status,
-    string Latency,
-    bool HttpOpen,
-    bool HttpsOpen);
-
-internal sealed record ScannerNicChoice(
-    string NicId,
-    string NicName,
-    string Description,
-    string Ipv4Address,
-    int PrefixLength,
-    string Gateway,
-    IReadOnlyList<string> DnsAddresses,
-    bool DhcpEnabled,
-    OperationalStatus OperationalStatus)
-{
-    public override string ToString() => $"{NicName}  â€¢  {Ipv4Address}";
-
-    public static List<ScannerNicChoice> FindAll()
-    {
-        var results = new List<ScannerNicChoice>();
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces()
-                     .Where(item => item.NetworkInterfaceType !=
-                                    System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
-                     .Where(item => item.OperationalStatus == OperationalStatus.Up))
-        {
-            try
-            {
-                var properties = nic.GetIPProperties();
-                var gateway = properties.GatewayAddresses
-                    .Select(item => item.Address)
-                    .FirstOrDefault(item => item.AddressFamily == AddressFamily.InterNetwork)?.ToString() ?? string.Empty;
-                var dns = properties.DnsAddresses
-                    .Where(item => item.AddressFamily == AddressFamily.InterNetwork)
-                    .Select(item => item.ToString())
-                    .ToList();
-                var dhcp = properties.GetIPv4Properties()?.IsDhcpEnabled ?? false;
-                foreach (var address in properties.UnicastAddresses
-                             .Where(item => item.Address.AddressFamily == AddressFamily.InterNetwork)
-                             .Where(item => !IPAddress.IsLoopback(item.Address)))
-                {
-                    results.Add(new ScannerNicChoice(nic.Id, nic.Name, nic.Description, address.Address.ToString(),
-                        address.PrefixLength, gateway, dns, dhcp, nic.OperationalStatus));
-                }
-            }
-            catch (NetworkInformationException)
-            {
-                // Skip adapters whose properties cannot be read.
-            }
-        }
-        return results.OrderBy(item => item.NicName, StringComparer.CurrentCultureIgnoreCase).ToList();
-    }
-}
-
-internal sealed record CidrRange(uint Network, int PrefixLength, int HostCount)
-{
-    public IEnumerable<IPAddress> Addresses()
-    {
-        var start = PrefixLength <= 30 ? 1u : 0u;
-        for (uint offset = 0; offset < HostCount; offset++)
-            yield return FromUInt32(Network + start + offset);
-    }
-
-    public static bool TryParse(string value, out CidrRange range, out string error)
-    {
-        range = new CidrRange(0, 32, 0);
-        error = "Enter a CIDR range such as 192.168.1.0/24.";
-        var parts = value.Trim().Split('/');
-        if (parts.Length != 2 || !Ipv4AddressText.TryParse(parts[0], out var address, out _) ||
-            !int.TryParse(parts[1], out var prefix) || prefix is < 0 or > 32)
-            return false;
-        var addressValue = ToUInt32(address);
-        var mask = prefix == 0 ? 0u : uint.MaxValue << (32 - prefix);
-        var totalAddressCount = 1L << (32 - prefix);
-        var usableHostCount = prefix <= 30 ? totalAddressCount - 2 : totalAddressCount;
-        if (usableHostCount > int.MaxValue)
-        {
-            error = "The CIDR range is too large.";
-            return false;
-        }
-        range = new CidrRange(addressValue & mask, prefix, (int)usableHostCount);
-        error = string.Empty;
-        return true;
-    }
-
-    public static string NetworkCidr(string address, int prefix)
-    {
-        if (!IPAddress.TryParse(address, out var parsed)) return $"{address}/{prefix}";
-        var mask = prefix == 0 ? 0u : uint.MaxValue << (32 - prefix);
-        return $"{FromUInt32(ToUInt32(parsed) & mask)}/{prefix}";
-    }
-
-    public static string PrefixToMask(int prefix)
-    {
-        var mask = prefix == 0 ? 0u : uint.MaxValue << (32 - prefix);
-        return FromUInt32(mask).ToString();
-    }
-
-    public static uint ToUInt32(IPAddress address)
-    {
-        var bytes = address.GetAddressBytes();
-        return ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) | ((uint)bytes[2] << 8) | bytes[3];
-    }
-
-    private static IPAddress FromUInt32(uint value) => new(new[]
-    {
-        (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value
-    });
-}
-
-internal static partial class ArpTable
-{
-    [GeneratedRegex(@"^\s*(?<ip>\d{1,3}(?:\.\d{1,3}){3})\s+(?<mac>[0-9a-fA-F-]{17})\s+", RegexOptions.Multiline)]
-    private static partial Regex ArpLineRegex();
-
-    public static Dictionary<string, string> Read()
-    {
-        var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!OperatingSystem.IsWindows()) return results;
-        try
-        {
-            var process = Process.Start(new ProcessStartInfo("arp.exe", "-a")
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true
-            });
-            if (process is null) return results;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(2000);
-            foreach (Match match in ArpLineRegex().Matches(output))
-                results[match.Groups["ip"].Value] = match.Groups["mac"].Value.Replace('-', ':').ToUpperInvariant();
-        }
-        catch
-        {
-            // MAC discovery is supplemental.
-        }
-        return results;
-    }
-}
-
-internal static class OuiLookup
-{
-    private static readonly Dictionary<string, string> Known = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["78:45:01"] = "Biamp",
-        ["00:45:A5"] = "Barco"
-    };
-
-    public static string Find(string mac)
-    {
-        if (mac.Length < 8) return string.Empty;
-        return Known.GetValueOrDefault(mac[..8], "Unknown");
-    }
-}
+            ret×o|¶‰žËkºwµça•¹±°¡Á¥¹Q…Í¬°¡ÑÑÁQ…Í¬°¡ÑÑÁÍQ…Í¬¤ì4(€€€€€€€Ù…ÈÁ¥¹œ€ô…Ý…¥ÐÁ¥¹Q…Í¬ì4(€€€€€€€Ù…È¡ÑÑÀ€ô…Ý…¥Ð¡ÑÑÁQ…Í¬ì4(€€€€€€€Ù…È¡ÑÑÁÌ€ô…Ý…¥Ð¡ÑÑÁÍQ…Í¬ì4(€€€€€€€¥˜€ …Á¥¹œ¹MÕ•ÍÌ€˜˜€…¡ÑÑÀ€˜˜€…¡ÑÑÁÌ¤É•ÑÕÉ¸¹Õ±°ì4(4(€€€€€€€Ù…È¡½ÍÑ¹…µ”€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€Ù…È±½½­ÕÀ€ô¹Ì¹•Ñ!½ÍÑ¹ÑÉåÍå¹Œ¡…‘‘É•ÍÌ¤ì4(€€€€€€€€€€€¡½ÍÑ¹…µ”€ô€¡…Ý…¥Ð±½½­ÕÀ¹]…¥ÑÍå¹Œ¡Q¥µ•MÁ…¸¹É½µ5¥±±¥Í•½¹‘Ì ÜÀÀ¤°…¹•±±…Ñ¥½¹Q½­•¸¤¤¹!½ÍÑ9…µ”ì4(€€€€€€€ô4(€€€€€€€…Ñ 4(€€€€€€€ì4(€€€€€€€€€€€€¼¼I•Ù•ÉÍ”9L¥Ì½ÁÑ¥½¹…°¸4(€€€€€€€ô4(€€€€€€€Ù…ÈÍÑ…ÑÕÌ€ô€¡¡ÑÑÀ°¡ÑÑÁÌ¤ÍÝ¥Ñ 4(€€€€€€€ì4(€€€€€€€€€€€€¡ÑÉÕ”°ÑÉÕ”¤€ôø€‰!QQ@€¼!QQALˆ°4(€€€€€€€€€€€€¡ÑÉÕ”°™…±Í”¤€ôø€‰!QQ@ˆ°4(€€€€€€€€€€€€¡™…±Í”°ÑÉÕ”¤€ôø€‰!QQALˆ°4(€€€€€€€€€€€|€ôø€‰=¹±¥¹”ˆ4(€€€€€€€ôì4(€€€€€€€É•ÑÕÉ¸¹•ÜM…¹¹•ÉI•ÍÕ±Ð 4(€€€€€€€€€€€…‘‘É•ÍÌ¹Q½MÑÉ¥¹œ ¤°¡½ÍÑ¹…µ”°ÍÑÉ¥¹œ¹µÁÑä°ÍÑÉ¥¹œ¹µÁÑä°ÍÑ…ÑÕÌ°4(€€€€€€€€€€€Á¥¹œ¹MÕ•ÍÌ€ü€‰íÁ¥¹œ¹I½Õ¹‘ÑÉ¥Á5¥±±¥Í•½¹‘ÍôµÌˆ€èÍÑÉ¥¹œ¹µÁÑä°4(€€€€€€€€€€€¡ÑÑÀ°¡ÑÑÁÌ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ…Íå¹ŒQ…Í¬ñ‰½½°ø…¹½¹¹•ÑÍå¹Œ 4(€€€€€€€%A‘‘É•ÍÌÍ½ÕÉ”°4(€€€€€€€%A‘‘É•ÍÌ‘•ÍÑ¥¹…Ñ¥½¸°4(€€€€€€€¥¹ÐÁ½ÉÐ°4(€€€€€€€¥¹ÐÑ¥µ•½ÕÑ5¥±±¥Í•½¹‘Ì°4(€€€€€€€…¹•±±…Ñ¥½¹Q½­•¸…¹•±±…Ñ¥½¹Q½­•¸¤4(€€€ì4(€€€€€€€ÕÍ¥¹œÙ…ÈÑ¥µ•½ÕÐ€ô…¹•±±…Ñ¥½¹Q½­•¹M½ÕÉ”¹É•…Ñ•1¥¹­•‘Q½­•¹M½ÕÉ”¡…¹•±±…Ñ¥½¹Q½­•¸¤ì4(€€€€€€€Ñ¥µ•½ÕÐ¹…¹•±™Ñ•È¡Ñ¥µ•½ÕÑ5¥±±¥Í•½¹‘Ì¤ì4(€€€€€€€ÕÍ¥¹œÙ…ÈÍ½­•Ð€ô¹•ÜM½­•Ð¡‘‘É•ÍÍ…µ¥±ä¹%¹Ñ•É9•ÑÝ½É¬°M½­•ÑQåÁ”¹MÑÉ•…´°AÉ½Ñ½½±QåÁ”¹QÀ¤ì4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€Í½­•Ð¹	¥¹¡¹•Ü%A¹‘A½¥¹Ð¡Í½ÕÉ”°€À¤¤ì4(€€€€€€€€€€€…Ý…¥ÐÍ½­•Ð¹½¹¹•ÑÍå¹Œ¡¹•Ü%A¹‘A½¥¹Ð¡‘•ÍÑ¥¹…Ñ¥½¸°Á½ÉÐ¤°Ñ¥µ•½ÕÐ¹Q½­•¸¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡=Á•É…Ñ¥½¹…¹•±•‘á•ÁÑ¥½¸¤Ý¡•¸€ ……¹•±±…Ñ¥½¹Q½­•¸¹%Í…¹•±±…Ñ¥½¹I•ÅÕ•ÍÑ•¤4(€€€€€€€ì4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡M½­•Ñá•ÁÑ¥½¸¤4(€€€€€€€ì4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥A½ÁÕ±…Ñ•É¥ ¤4(€€€ì4(€€€€€€€}É¥¹I½ÝÌ¹±•…È ¤ì4(€€€€€€€™½É•… €¡Ù…ÈÉ•ÍÕ±Ð¥¸}É•ÍÕ±ÑÌ¤4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÉ½Ý%¹‘•à€ô}É¥¹I½ÝÌ¹‘¡É•ÍÕ±Ð¹%Á‘‘É•ÍÌ°É•ÍÕ±Ð¹!½ÍÑ¹…µ”°É•ÍÕ±Ð¹5…‘‘É•ÍÌ°4(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹5…¹Õ™…ÑÕÉ•È°É•ÍÕ±Ð¹MÑ…ÑÕÌ°É•ÍÕ±Ð¹1…Ñ•¹ä¤ì4(€€€€€€€€€€€}É¥¹I½ÝÍmÉ½Ý%¹‘•át¹Q…œ€ôÉ•ÍÕ±Ðì4(€€€€€€€€€€€}É¥¹I½ÝÍmÉ½Ý%¹‘•át¹•±±ÍlÑt¹MÑå±”¹½É•½±½È€ôÉ•ÍÕ±Ð¹MÑ…ÑÕÌ€ôô€‰=¹±¥¹”ˆ€üU¥Q¡•µ”¹É••¸€èU¥Q¡•µ”¹	±Õ”ì4(€€€€€€€€€€€}É¥¹I½ÝÍmÉ½Ý%¹‘•át¹•±±ÍlÑt¹MÑå±”¹½¹Ð€ôU¥Q¡•µ”¹½¹Ð ä°½¹ÑMÑå±”¹	½±¤ì4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥±•…ÉI•ÍÕ±ÑÌ ¤4(€€€ì4(€€€€€€€¥˜€¡}Í…¹…¹•±±…Ñ¥½¸¥Ì¹½Ð¹Õ±°¤É•ÑÕÉ¸ì4(€€€€€€€}É•ÍÕ±ÑÌ¹±•…È ¤ì4(€€€€€€€}É¥¹I½ÝÌ¹±•…È ¤ì4(€€€€€€€}ÁÉ½É•ÍÌ¹Y…±Õ”€ô€Àì4(€€€€€€€}ÁÉ½É•ÍÍ1…‰•°¹Q•áÐ€ô€‰I•…‘äÑ¼Í…¸ˆì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥É¥‘}•±±½Õ‰±•±¥¬¡½‰©•ÐüÍ•¹‘•È°…Ñ…É¥‘Y¥•Ý•±±Ù•¹ÑÉÌ”¤4(€€€ì4(€€€€€€€¥˜€¡”¹I½Ý%¹‘•à€ð€Àñð}É¥¹I½ÝÍm”¹I½Ý%¹‘•át¹Q…œ¥Ì¹½ÐM…¹¹•ÉI•ÍÕ±ÐÉ•ÍÕ±Ð¤É•ÑÕÉ¸ì4(€€€€€€€Ù…ÈÍ¡•µ”€ôÉ•ÍÕ±Ð¹!ÑÑÁÍ=Á•¸€ü€‰¡ÑÑÁÌˆ€èÉ•ÍÕ±Ð¹!ÑÑÁ=Á•¸€ü€‰¡ÑÑÀˆ€è¹Õ±°ì4(€€€€€€€¥˜€¡Í¡•µ”¥Ì¹Õ±°¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰Q¡¥Ì‘•Ù¥”‘¥¹½Ð•áÁ½Í”!QQ@½È!QQAL‘ÕÉ¥¹œÑ¡”Í…¸¸ˆ°4(€€€€€€€€€€€€€€€€‰=Á•¸‘•Ù¥”ˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€ô4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€AÉ½•ÍÌ¹MÑ…ÉÐ¡¹•ÜAÉ½•ÍÍMÑ…ÉÑ%¹™¼ ‰íÍ¡•µ•ôè¼½íÉ•ÍÕ±Ð¹%Á‘‘É•ÍÍôˆ¤ìUÍ•M¡•±±á•ÕÑ”€ôÑÉÕ”ô¤ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡á•ÁÑ¥½¸•á•ÁÑ¥½¸¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°•á•ÁÑ¥½¸¹5•ÍÍ…”°€‰=Á•¸‘•Ù¥”ˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹ÉÉ½È¤ì4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”Ù½¥áÁ½ÉÑÍØ ¤4(€€€ì4(€€€€€€€¥˜€¡}É•ÍÕ±ÑÌ¹½Õ¹Ð€ôô€À¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰IÕ¸„Í…¸‰•™½É”•áÁ½ÉÑ¥¹œÉ•ÍÕ±ÑÌ¸ˆ°€‰áÁ½ÉÐMXˆ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€ô4(€€€€€€€ÕÍ¥¹œÙ…È‘¥…±½œ€ô¹•ÜM…Ù•¥±•¥…±½œ4(€€€€€€€ì4(€€€€€€€€€€€¥±Ñ•È€ô€‰MX™¥±”€ ¨¹ÍØ¥ð¨¹ÍØˆ°4(€€€€€€€€€€€¥±•9…µ”€ô€‰8àµ%@µM…¸µí…Ñ•Q¥µ”¹9½Üéåååäµ54µ‘µ!!µµô¹ÍØˆ4(€€€€€€€ôì4(€€€€€€€¥˜€¡‘¥…±½œ¹M¡½Ý¥…±½œ¡Ñ¡¥Ì¤€„ô¥…±½I•ÍÕ±Ð¹=,¤É•ÑÕÉ¸ì4(€€€€€€€Ù…È±¥¹•Ì€ô¹•Ü1¥ÍÐñÍÑÉ¥¹œøì€‰%@‘‘É•ÍÌ±!½ÍÑ¹…µ”±5‘‘É•ÍÌ±5…¹Õ™…ÑÕÉ•È±MÑ…ÑÕÌ±1…Ñ•¹äˆôì4(€€€€€€€±¥¹•Ì¹‘‘I…¹”¡}É•ÍÕ±ÑÌ¹M•±•Ð¡¥Ñ•´€ôøÍÑÉ¥¹œ¹)½¥¸ œ°œ°4(€€€€€€€€€€€ÍØ¡¥Ñ•´¹%Á‘‘É•ÍÌ¤°ÍØ¡¥Ñ•´¹!½ÍÑ¹…µ”¤°ÍØ¡¥Ñ•´¹5…‘‘É•ÍÌ¤°ÍØ¡¥Ñ•´¹5…¹Õ™…ÑÕÉ•È¤°4(€€€€€€€€€€€ÍØ¡¥Ñ•´¹MÑ…ÑÕÌ¤°ÍØ¡¥Ñ•´¹1…Ñ•¹ä¤¤¤¤ì4(€€€€€€€¥±”¹]É¥Ñ•±±1¥¹•Ì¡‘¥…±½œ¹¥±•9…µ”°±¥¹•Ì°¹•ÜUQá¹½‘¥¹œ¡ÑÉÕ”¤¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÍÑÉ¥¹œÍØ¡ÍÑÉ¥¹œÙ…±Õ”¤€ôø€‰p‰íÙ…±Õ”¹I•Á±…” ‰pˆˆ°€‰p‰pˆˆ¥õpˆˆì4(4(€€€ÁÉ¥Ù…Ñ”…Íå¹ŒQ…Í¬ÁÁ±åMÑ…Ñ¥M•ÑÑ¥¹ÍÍå¹Œ ¤4(€€€ì4(€€€€€€€¥˜€¡}¹¥A¥­•È¹M•±•Ñ•‘%Ñ•´¥Ì¹½ÐM…¹¹•É9¥¡½¥”¹¥Œ¤É•ÑÕÉ¸ì4(€€€€€€€¥˜€ …Y…±¥‘%ÁØÐ¡}¥Á‘‘É•ÍÌ¹Q•áÐ°É•ÅÕ¥É•èÑÉÕ”¤ñð€…Y…±¥‘%ÁØÐ¡}ÍÕ‰¹•Ñ5…Í¬¹Q•áÐ°É•ÅÕ¥É•èÑÉÕ”¤ñð4(€€€€€€€€€€€€…Y…±¥‘%ÁØÐ¡}…Ñ•Ý…ä¹Q•áÐ°É•ÅÕ¥É•è™…±Í”¤ñð€…Y…±¥‘%ÁØÐ¡}ÁÉ¥µ…Éå¹Ì¹Q•áÐ°É•ÅÕ¥É•è™…±Í”¤ñð4(€€€€€€€€€€€€…Y…±¥‘%ÁØÐ¡}Í•½¹‘…Éå¹Ì¹Q•áÐ°É•ÅÕ¥É•è™…±Í”¤¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰I•Ù¥•ÜÑ¡”%@…‘‘É•ÍÌ°ÍÕ‰¹•Ðµ…Í¬°…Ñ•Ý…ä°…¹9LÙ…±Õ•Ì¸ˆ°4(€€€€€€€€€€€€€€€€‰%¹Ù…±¥¹•ÑÝ½É¬Í•ÑÑ¥¹œˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€ô4(€€€€€€€¥˜€ …M…™•%¹Ñ•É™…•9…µ”¡¹¥Œ¹9¥9…µ”¤¤É•ÑÕÉ¸ì4(€€€€€€€Ù…È…Ñ•Ý…ä€ôÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡}…Ñ•Ý…ä¹Q•áÐ¤€ü€‰¹½¹”ˆ€è}…Ñ•Ý…ä¹Q•áÐ¹QÉ¥´ ¤ì4(€€€€€€€Ù…È±¥¹•Ì€ô¹•Ü1¥ÍÐñÍÑÉ¥¹œø4(€€€€€€€ì4(€€€€€€€€€€€€‰¹•ÑÍ ¥¹Ñ•É™…”¥ÁØÐÍ•Ð…‘‘É•ÍÌ¹…µ”õp‰í¹¥Œ¹9¥9…µ•õpˆÍ½ÕÉ”õÍÑ…Ñ¥Œ…‘‘É•ÍÌõí}¥Á‘‘É•ÍÌ¹Q•áÐ¹QÉ¥´ ¥ôµ…Í¬õí}ÍÕ‰¹•Ñ5…Í¬¹Q•áÐ¹QÉ¥´ ¥ô…Ñ•Ý…äõí…Ñ•Ý…åôˆ4(€€€€€€€ôì4(€€€€€€€¥˜€ …ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡}ÁÉ¥µ…Éå¹Ì¹Q•áÐ¤¤4(€€€€€€€ì4(€€€€€€€€€€€±¥¹•Ì¹‘ ‰¹•ÑÍ ¥¹Ñ•É™…”¥ÁØÐÍ•Ð‘¹ÍÍ•ÉÙ•ÉÌ¹…µ”õp‰í¹¥Œ¹9¥9…µ•õpˆÍ½ÕÉ”õÍÑ…Ñ¥Œ…‘‘É•ÍÌõí}ÁÉ¥µ…Éå¹Ì¹Q•áÐ¹QÉ¥´ ¥ôÙ…±¥‘…Ñ”õ¹¼ˆ¤ì4(€€€€€€€€€€€¥˜€ …ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡}Í•½¹‘…Éå¹Ì¹Q•áÐ¤¤4(€€€€€€€€€€€€€€€±¥¹•Ì¹‘ ‰¹•ÑÍ ¥¹Ñ•É™…”¥ÁØÐ…‘‘¹ÍÍ•ÉÙ•ÉÌ¹…µ”õp‰í¹¥Œ¹9¥9…µ•õpˆ…‘‘É•ÍÌõí}Í•½¹‘…Éå¹Ì¹Q•áÐ¹QÉ¥´ ¥ô¥¹‘•àôÈÙ…±¥‘…Ñ”õ¹¼ˆ¤ì4(€€€€€€€ô4(€€€€€€€¥˜€¡…Ý…¥ÐIÕ¹±•Ù…Ñ•‘½µµ…¹‘ÍÍå¹Œ¡±¥¹•Ì¤¤1½…‘9•ÑÝ½É­‘…ÁÑ•ÉÌ ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”…Íå¹ŒQ…Í¬M•Ñ¡ÁÍå¹Œ ¤4(€€€ì4(€€€€€€€¥˜€¡}¹¥A¥­•È¹M•±•Ñ•‘%Ñ•´¥Ì¹½ÐM…¹¹•É9¥¡½¥”¹¥Œñð€…M…™•%¹Ñ•É™…•9…µ”¡¹¥Œ¹9¥9…µ”¤¤É•ÑÕÉ¸ì4(€€€€€€€Ù…È±¥¹•Ì€ô¹•Ýmt4(€€€€€€€ì4(€€€€€€€€€€€€‰¹•ÑÍ ¥¹Ñ•É™…”¥ÁØÐÍ•Ð…‘‘É•ÍÌ¹…µ”õp‰í¹¥Œ¹9¥9…µ•õpˆÍ½ÕÉ”õ‘¡Àˆ°4(€€€€€€€€€€€€‰¹•ÑÍ ¥¹Ñ•É™…”¥ÁØÐÍ•Ð‘¹ÍÍ•ÉÙ•ÉÌ¹…µ”õp‰í¹¥Œ¹9¥9…µ•õpˆÍ½ÕÉ”õ‘¡Àˆ4(€€€€€€€ôì4(€€€€€€€¥˜€¡…Ý…¥ÐIÕ¹±•Ù…Ñ•‘½µµ…¹‘ÍÍå¹Œ¡±¥¹•Ì¤¤1½…‘9•ÑÝ½É­‘…ÁÑ•ÉÌ ¤ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”…Íå¹ŒQ…Í¬ñ‰½½°øIÕ¹±•Ù…Ñ•‘½µµ…¹‘ÍÍå¹Œ¡%¹Õµ•É…‰±”ñÍÑÉ¥¹œø½µµ…¹‘Ì¤4(€€€ì4(€€€€€€€Ù…È½µµ…¹‘¥±”€ôA…Ñ ¹½µ‰¥¹”¡A…Ñ ¹•ÑQ•µÁA…Ñ  ¤°€‰¸àµ¥ÀµÍ…¹¹•ÈµíÕ¥¹9•ÝÕ¥ ¤é9ô¹µˆ¤ì4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€¥±”¹]É¥Ñ•±±1¥¹•Ì¡½µµ…¹‘¥±”°l‰•¡¼½™˜ˆ°€¸¸½µµ…¹‘Ì°€‰•á¥Ð€½ˆ€••ÉÉ½É±•Ù•°”‰t°¹½‘¥¹œ¹M%$¤ì4(€€€€€€€€€€€Ù…ÈÁÉ½•ÍÌ€ôAÉ½•ÍÌ¹MÑ…ÉÐ¡¹•ÜAÉ½•ÍÍMÑ…ÉÑ%¹™¼¡½µµ…¹‘¥±”¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€UÍ•M¡•±±á•ÕÑ”€ôÑÉÕ”°4(€€€€€€€€€€€€€€€Y•Éˆ€ô€‰ÉÕ¹…Ìˆ°4(€€€€€€€€€€€€€€€]½É­¥¹¥É•Ñ½Éä€ôA…Ñ ¹•ÑQ•µÁA…Ñ  ¤°4(€€€€€€€€€€€€€€€]¥¹‘½ÝMÑå±”€ôAÉ½•ÍÍ]¥¹‘½ÝMÑå±”¹!¥‘‘•¸4(€€€€€€€€€€€ô¤ì4(€€€€€€€€€€€¥˜€¡ÁÉ½•ÍÌ¥Ì¹Õ±°¤É•ÑÕÉ¸™…±Í”ì4(€€€€€€€€€€€…Ý…¥ÐÁÉ½•ÍÌ¹]…¥Ñ½Éá¥ÑÍå¹Œ ¤ì4(€€€€€€€€€€€¥˜€¡ÁÉ½•ÍÌ¹á¥Ñ½‘”€„ô€À¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰]¥¹‘½ÝÌÉ•ÑÕÉ¹••á¥Ð½‘”íÁÉ½•ÍÌ¹á¥Ñ½‘•ôÝ¡¥±”¡…¹¥¹œÑ¡”…‘…ÁÑ•È¸ˆ°4(€€€€€€€€€€€€€€€€€€€€‰9%Í•ÑÑ¥¹Ìˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹ÉÉ½È¤ì4(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰Q¡”¹•ÑÝ½É¬…‘…ÁÑ•ÈÍ•ÑÑ¥¹ÌÝ•É”ÕÁ‘…Ñ•¸ˆ°€‰9%Í•ÑÑ¥¹Ìˆ°4(€€€€€€€€€€€€€€€5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹%¹™½Éµ…Ñ¥½¸¤ì4(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡]¥¸ÌÉá•ÁÑ¥½¸•á•ÁÑ¥½¸¤Ý¡•¸€¡•á•ÁÑ¥½¸¹9…Ñ¥Ù•ÉÉ½É½‘”€ôô€ÄÈÈÌ¤4(€€€€€€€ì4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€ô4(€€€€€€€…Ñ €¡á•ÁÑ¥½¸•á•ÁÑ¥½¸¤4(€€€€€€€ì4(€€€€€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°•á•ÁÑ¥½¸¹5•ÍÍ…”°€‰9%Í•ÑÑ¥¹Ìˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹ÉÉ½È¤ì4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€ô4(€€€€€€€™¥¹…±±ä4(€€€€€€€ì4(€€€€€€€€€€€ÑÉäì¥˜€¡¥±”¹á¥ÍÑÌ¡½µµ…¹‘¥±”¤¤¥±”¹•±•Ñ”¡½µµ…¹‘¥±”¤ìô…Ñ ìô4(€€€€€€€ô4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”‰½½°M…™•%¹Ñ•É™…•9…µ”¡ÍÑÉ¥¹œ¹…µ”¤4(€€€ì4(€€€€€€€¥˜€¡¹…µ”¹%¹‘•á=™¹ä¡lqÈœ°€q¸œ°€œˆœ°€œ˜œ°€ðœ°€œðœ°€œøt¤€ð€À¤É•ÑÕÉ¸ÑÉÕ”ì4(€€€€€€€5•ÍÍ…•	½à¹M¡½Ü¡Ñ¡¥Ì°€‰Q¡¥Ì¹•ÑÝ½É¬…‘…ÁÑ•È¹…µ”½¹Ñ…¥¹Ì¡…É…Ñ•ÉÌÑ¡…Ð…¹¹½Ð‰”Á…ÍÍ•Í…™•±äÑ¼]¥¹‘½ÝÌ¸ˆ°4(€€€€€€€€€€€€‰9%Í•ÑÑ¥¹Ìˆ°5•ÍÍ…•	½á	ÕÑÑ½¹Ì¹=,°5•ÍÍ…•	½á%½¸¹ÉÉ½È¤ì4(€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½°Y…±¥‘%ÁØÐ¡ÍÑÉ¥¹œÙ…±Õ”°‰½½°É•ÅÕ¥É•¤€ôø4(€€€€€€€ÍÑÉ¥¹œ¹%Í9Õ±±=É]¡¥Ñ•MÁ…”¡Ù…±Õ”¤€ü€…É•ÅÕ¥É•€è%ÁØÑ‘‘É•ÍÍQ•áÐ¹QÉåA…ÉÍ”¡Ù…±Õ”°½ÕÐ|°½ÕÐ|¤ì4)ô4(4)¥¹Ñ•É¹…°Í•…±•É•½ÉM…¹¹•ÉI•ÍÕ±Ð 4(€€€ÍÑÉ¥¹œ%Á‘‘É•ÍÌ°4(€€€ÍÑÉ¥¹œ!½ÍÑ¹…µ”°4(€€€ÍÑÉ¥¹œ5…‘‘É•ÍÌ°4(€€€ÍÑÉ¥¹œ5…¹Õ™…ÑÕÉ•È°4(€€€ÍÑÉ¥¹œMÑ…ÑÕÌ°4(€€€ÍÑÉ¥¹œ1…Ñ•¹ä°4(€€€‰½½°!ÑÑÁ=Á•¸°4(€€€‰½½°!ÑÑÁÍ=Á•¸¤ì4(4)¥¹Ñ•É¹…°Í•…±•É•½ÉM…¹¹•É9¥¡½¥” 4(€€€ÍÑÉ¥¹œ9¥%°4(€€€ÍÑÉ¥¹œ9¥9…µ”°4(€€€ÍÑÉ¥¹œ•ÍÉ¥ÁÑ¥½¸°4(€€€ÍÑÉ¥¹œ%ÁØÑ‘‘É•ÍÌ°4(€€€¥¹ÐAÉ•™¥á1•¹Ñ °4(€€€ÍÑÉ¥¹œ…Ñ•Ý…ä°4(€€€%I•…‘=¹±å1¥ÍÐñÍÑÉ¥¹œø¹Í‘‘É•ÍÍ•Ì°4(€€€‰½½°¡Á¹…‰±•°4(€€€=Á•É…Ñ¥½¹…±MÑ…ÑÕÌ=Á•É…Ñ¥½¹…±MÑ…ÑÕÌ¤4)ì4(€€€ÁÕ‰±¥Œ½Ù•ÉÉ¥‘”ÍÑÉ¥¹œQ½MÑÉ¥¹œ ¤€ôø€‰í9¥9…µ•ô€ƒŠˆ€í%ÁØÑ‘‘É•ÍÍôˆì4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ1¥ÍÐñM…¹¹•É9¥¡½¥”ø¥¹‘±° ¤4(€€€ì4(€€€€€€€Ù…ÈÉ•ÍÕ±ÑÌ€ô¹•Ü1¥ÍÐñM…¹¹•É9¥¡½¥”ø ¤ì4(€€€€€€€™½É•… €¡Ù…È¹¥Œ¥¸9•ÑÝ½É­%¹Ñ•É™…”¹•Ñ±±9•ÑÝ½É­%¹Ñ•É™…•Ì ¤4(€€€€€€€€€€€€€€€€€€€€€¹]¡•É”¡¥Ñ•´€ôø¥Ñ•´¹9•ÑÝ½É­%¹Ñ•É™…•QåÁ”€„ô4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•´¹9•Ð¹9•ÑÝ½É­%¹™½Éµ…Ñ¥½¸¹9•ÑÝ½É­%¹Ñ•É™…•QåÁ”¹1½½Á‰…¬¤4(€€€€€€€€€€€€€€€€€€€€€¹]¡•É”¡¥Ñ•´€ôø¥Ñ•´¹=Á•É…Ñ¥½¹…±MÑ…ÑÕÌ€ôô=Á•É…Ñ¥½¹…±MÑ…ÑÕÌ¹UÀ¤¤4(€€€€€€€ì4(€€€€€€€€€€€ÑÉä4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€Ù…ÈÁÉ½Á•ÉÑ¥•Ì€ô¹¥Œ¹•Ñ%AAÉ½Á•ÉÑ¥•Ì ¤ì4(€€€€€€€€€€€€€€€Ù…È…Ñ•Ý…ä€ôÁÉ½Á•ÉÑ¥•Ì¹…Ñ•Ý…å‘‘É•ÍÍ•Ì4(€€€€€€€€€€€€€€€€€€€€¹M•±•Ð¡¥Ñ•´€ôø¥Ñ•´¹‘‘É•ÍÌ¤4(€€€€€€€€€€€€€€€€€€€€¹¥ÉÍÑ=É•™…Õ±Ð¡¥Ñ•´€ôø¥Ñ•´¹‘‘É•ÍÍ…µ¥±ä€ôô‘‘É•ÍÍ…µ¥±ä¹%¹Ñ•É9•ÑÝ½É¬¤ü¹Q½MÑÉ¥¹œ ¤€üüÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€€€€€€€€€Ù…È‘¹Ì€ôÁÉ½Á•ÉÑ¥•Ì¹¹Í‘‘É•ÍÍ•Ì4(€€€€€€€€€€€€€€€€€€€€¹]¡•É”¡¥Ñ•´€ôø¥Ñ•´¹‘‘É•ÍÍ…µ¥±ä€ôô‘‘É•ÍÍ…µ¥±ä¹%¹Ñ•É9•ÑÝ½É¬¤4(€€€€€€€€€€€€€€€€€€€€¹M•±•Ð¡¥Ñ•´€ôø¥Ñ•´¹Q½MÑÉ¥¹œ ¤¤4(€€€€€€€€€€€€€€€€€€€€¹Q½1¥ÍÐ ¤ì4(€€€€€€€€€€€€€€€Ù…È‘¡À€ôÁÉ½Á•ÉÑ¥•Ì¹•Ñ%AØÑAÉ½Á•ÉÑ¥•Ì ¤ü¹%Í¡Á¹…‰±•€üü™…±Í”ì4(€€€€€€€€€€€€€€€™½É•… €¡Ù…È…‘‘É•ÍÌ¥¸ÁÉ½Á•ÉÑ¥•Ì¹U¹¥…ÍÑ‘‘É•ÍÍ•Ì4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹]¡•É”¡¥Ñ•´€ôø¥Ñ•´¹‘‘É•ÍÌ¹‘‘É•ÍÍ…µ¥±ä€ôô‘‘É•ÍÍ…µ¥±ä¹%¹Ñ•É9•ÑÝ½É¬¤4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹]¡•É”¡¥Ñ•´€ôø€…%A‘‘É•ÍÌ¹%Í1½½Á‰…¬¡¥Ñ•´¹‘‘É•ÍÌ¤¤¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€É•ÍÕ±ÑÌ¹‘¡¹•ÜM…¹¹•É9¥¡½¥”¡¹¥Œ¹%°¹¥Œ¹9…µ”°¹¥Œ¹•ÍÉ¥ÁÑ¥½¸°…‘‘É•ÍÌ¹‘‘É•ÍÌ¹Q½MÑÉ¥¹œ ¤°4(€€€€€€€€€€€€€€€€€€€€€€€…‘‘É•ÍÌ¹AÉ•™¥á1•¹Ñ °…Ñ•Ý…ä°‘¹Ì°‘¡À°¹¥Œ¹=Á•É…Ñ¥½¹…±MÑ…ÑÕÌ¤¤ì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€ô4(€€€€€€€€€€€…Ñ €¡9•ÑÝ½É­%¹™½Éµ…Ñ¥½¹á•ÁÑ¥½¸¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€¼¼M­¥À…‘…ÁÑ•ÉÌÝ¡½Í”ÁÉ½Á•ÉÑ¥•Ì…¹¹½Ð‰”É•…¸4(€€€€€€€€€€€ô4(€€€€€€€ô4(€€€€€€€É•ÑÕÉ¸É•ÍÕ±ÑÌ¹=É‘•É	ä¡¥Ñ•´€ôø¥Ñ•´¹9¥9…µ”°MÑÉ¥¹½µÁ…É•È¹ÕÉÉ•¹ÑÕ±ÑÕÉ•%¹½É•…Í”¤¹Q½1¥ÍÐ ¤ì4(€€€ô4)ô4(4)¥¹Ñ•É¹…°Í•…±•É•½É¥‘ÉI…¹”¡Õ¥¹Ð9•ÑÝ½É¬°¥¹ÐAÉ•™¥á1•¹Ñ °¥¹Ð!½ÍÑ½Õ¹Ð¤4)ì4(€€€ÁÕ‰±¥Œ%¹Õµ•É…‰±”ñ%A‘‘É•ÍÌø‘‘É•ÍÍ•Ì ¤4(€€€ì4(€€€€€€€Ù…ÈÍÑ…ÉÐ€ôAÉ•™¥á1•¹Ñ €ðô€ÌÀ€ü€ÅÔ€è€ÁÔì4(€€€€€€€™½È€¡Õ¥¹Ð½™™Í•Ð€ô€Àì½™™Í•Ð€ð!½ÍÑ½Õ¹Ðì½™™Í•Ð¬¬¤4(€€€€€€€€€€€å¥•±É•ÑÕÉ¸É½µU%¹ÐÌÈ¡9•ÑÝ½É¬€¬ÍÑ…ÉÐ€¬½™™Í•Ð¤ì4(€€€ô4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½°QÉåA…ÉÍ”¡ÍÑÉ¥¹œÙ…±Õ”°½ÕÐ¥‘ÉI…¹”É…¹”°½ÕÐÍÑÉ¥¹œ•ÉÉ½È¤4(€€€ì4(€€€€€€€É…¹”€ô¹•Ü¥‘ÉI…¹” À°€ÌÈ°€À¤ì4(€€€€€€€•ÉÉ½È€ô€‰¹Ñ•È„%HÉ…¹”ÍÕ …Ì€ÄäÈ¸ÄØà¸Ä¸À¼ÈÐ¸ˆì4(€€€€€€€Ù…ÈÁ…ÉÑÌ€ôÙ…±Õ”¹QÉ¥´ ¤¹MÁ±¥Ð œ¼œ¤ì4(€€€€€€€¥˜€¡Á…ÉÑÌ¹1•¹Ñ €„ô€Èñð€…%ÁØÑ‘‘É•ÍÍQ•áÐ¹QÉåA…ÉÍ”¡Á…ÉÑÍlÁt°½ÕÐÙ…È…‘‘É•ÍÌ°½ÕÐ|¤ñð4(€€€€€€€€€€€€…¥¹Ð¹QÉåA…ÉÍ”¡Á…ÉÑÍlÅt°½ÕÐÙ…ÈÁÉ•™¥à¤ñðÁÉ•™¥à¥Ì€ð€À½È€ø€ÌÈ¤4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€Ù…È…‘‘É•ÍÍY…±Õ”€ôQ½U%¹ÐÌÈ¡…‘‘É•ÍÌ¤ì4(€€€€€€€Ù…Èµ…Í¬€ôÁÉ•™¥à€ôô€À€ü€ÁÔ€èÕ¥¹Ð¹5…áY…±Õ”€ðð€ ÌÈ€´ÁÉ•™¥à¤ì4(€€€€€€€Ù…ÈÑ½Ñ…±‘‘É•ÍÍ½Õ¹Ð€ô€Å0€ðð€ ÌÈ€´ÁÉ•™¥à¤ì4(€€€€€€€Ù…ÈÕÍ…‰±•!½ÍÑ½Õ¹Ð€ôÁÉ•™¥à€ðô€ÌÀ€üÑ½Ñ…±‘‘É•ÍÍ½Õ¹Ð€´€È€èÑ½Ñ…±‘‘É•ÍÍ½Õ¹Ðì4(€€€€€€€¥˜€¡ÕÍ…‰±•!½ÍÑ½Õ¹Ð€ø¥¹Ð¹5…áY…±Õ”¤4(€€€€€€€ì4(€€€€€€€€€€€•ÉÉ½È€ô€‰Q¡”%HÉ…¹”¥ÌÑ½¼±…É”¸ˆì4(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì4(€€€€€€€ô4(€€€€€€€É…¹”€ô¹•Ü¥‘ÉI…¹”¡…‘‘É•ÍÍY…±Õ”€˜µ…Í¬°ÁÉ•™¥à°€¡¥¹Ð¥ÕÍ…‰±•!½ÍÑ½Õ¹Ð¤ì4(€€€€€€€•ÉÉ½È€ôÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì4(€€€ô4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒÍÑÉ¥¹œ9•ÑÝ½É­¥‘È¡ÍÑÉ¥¹œ…‘‘É•ÍÌ°¥¹ÐÁÉ•™¥à¤4(€€€ì4(€€€€€€€¥˜€ …%A‘‘É•ÍÌ¹QÉåA…ÉÍ”¡…‘‘É•ÍÌ°½ÕÐÙ…ÈÁ…ÉÍ•¤¤É•ÑÕÉ¸€‰í…‘‘É•ÍÍô½íÁÉ•™¥áôˆì4(€€€€€€€Ù…Èµ…Í¬€ôÁÉ•™¥à€ôô€À€ü€ÁÔ€èÕ¥¹Ð¹5…áY…±Õ”€ðð€ ÌÈ€´ÁÉ•™¥à¤ì4(€€€€€€€É•ÑÕÉ¸€‰íÉ½µU%¹ÐÌÈ¡Q½U%¹ÐÌÈ¡Á…ÉÍ•¤€˜µ…Í¬¥ô½íÁÉ•™¥áôˆì4(€€€ô4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒÍÑÉ¥¹œAÉ•™¥áQ½5…Í¬¡¥¹ÐÁÉ•™¥à¤4(€€€ì4(€€€€€€€Ù…Èµ…Í¬€ôÁÉ•™¥à€ôô€À€ü€ÁÔ€èÕ¥¹Ð¹5…áY…±Õ”€ðð€ ÌÈ€´ÁÉ•™¥à¤ì4(€€€€€€€É•ÑÕÉ¸É½µU%¹ÐÌÈ¡µ…Í¬¤¹Q½MÑÉ¥¹œ ¤ì4(€€€ô4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒÕ¥¹ÐQ½U%¹ÐÌÈ¡%A‘‘É•ÍÌ…‘‘É•ÍÌ¤4(€€€ì4(€€€€€€€Ù…È‰åÑ•Ì€ô…‘‘É•ÍÌ¹•Ñ‘‘É•ÍÍ	åÑ•Ì ¤ì4(€€€€€€€É•ÑÕÉ¸€ ¡Õ¥¹Ð¥‰åÑ•ÍlÁt€ðð€ÈÐ¤ð€ ¡Õ¥¹Ð¥‰åÑ•ÍlÅt€ðð€ÄØ¤ð€ ¡Õ¥¹Ð¥‰åÑ•ÍlÉt€ðð€à¤ð‰åÑ•ÍlÍtì4(€€€ô4(4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ%A‘‘É•ÍÌÉ½µU%¹ÐÌÈ¡Õ¥¹ÐÙ…±Õ”¤€ôø¹•Ü¡¹•Ýmt4(€€€ì4(€€€€€€€€¡‰åÑ”¤¡Ù…±Õ”€øø€ÈÐ¤°€¡‰åÑ”¤¡Ù…±Õ”€øø€ÄØ¤°€¡‰åÑ”¤¡Ù…±Õ”€øø€à¤°€¡‰åÑ”¥Ù…±Õ”4(€€€ô¤ì4)ô4(4)¥¹Ñ•É¹…°ÍÑ…Ñ¥ŒÁ…ÉÑ¥…°±…ÍÌÉÁQ…‰±”4)ì4(€€€m•¹•É…Ñ•‘I••à¡ ‰yqÌ¨ üñ¥Àùq‘ìÄ°Íô üép¹q‘ìÄ°Íô¥ìÍô¥qÌ¬ üñµ…ŒùlÀ´å„µ™µµuìÄÝô¥qÌ¬ˆ°I••á=ÁÑ¥½¹Ì¹5Õ±Ñ¥±¥¹”¥t4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÁ…ÉÑ¥…°I••àÉÁ1¥¹•I••à ¤ì4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ¥Ñ¥½¹…ÉäñÍÑÉ¥¹œ°ÍÑÉ¥¹œøI•… ¤4(€€€ì4(€€€€€€€Ù…ÈÉ•ÍÕ±ÑÌ€ô¹•Ü¥Ñ¥½¹…ÉäñÍÑÉ¥¹œ°ÍÑÉ¥¹œø¡MÑÉ¥¹½µÁ…É•È¹=É‘¥¹…±%¹½É•…Í”¤ì4(€€€€€€€¥˜€ …=Á•É…Ñ¥¹MåÍÑ•´¹%Í]¥¹‘½ÝÌ ¤¤É•ÑÕÉ¸É•ÍÕ±ÑÌì4(€€€€€€€ÑÉä4(€€€€€€€ì4(€€€€€€€€€€€Ù…ÈÁÉ½•ÍÌ€ôAÉ½•ÍÌ¹MÑ…ÉÐ¡¹•ÜAÉ½•ÍÍMÑ…ÉÑ%¹™¼ ‰…ÉÀ¹•á”ˆ°€ˆµ„ˆ¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€UÍ•M¡•±±á•ÕÑ”€ô™…±Í”°4(€€€€€€€€€€€€€€€I•‘¥É•ÑMÑ…¹‘…É‘=ÕÑÁÕÐ€ôÑÉÕ”°4(€€€€€€€€€€€€€€€É•…Ñ•9½]¥¹‘½Ü€ôÑÉÕ”4(€€€€€€€€€€€ô¤ì4(€€€€€€€€€€€¥˜€¡ÁÉ½•ÍÌ¥Ì¹Õ±°¤É•ÑÕÉ¸É•ÍÕ±ÑÌì4(€€€€€€€€€€€Ù…È½ÕÑÁÕÐ€ôÁÉ½•ÍÌ¹MÑ…¹‘…É‘=ÕÑÁÕÐ¹I•…‘Q½¹ ¤ì4(€€€€€€€€€€€ÁÉ½•ÍÌ¹]…¥Ñ½Éá¥Ð ÈÀÀÀ¤ì4(€€€€€€€€€€€™½É•… €¡5…Ñ µ…Ñ ¥¸ÉÁ1¥¹•I••à ¤¹5…Ñ¡•Ì¡½ÕÑÁÕÐ¤¤4(€€€€€€€€€€€€€€€É•ÍÕ±ÑÍmµ…Ñ ¹É½ÕÁÍl‰¥À‰t¹Y…±Õ•t€ôµ…Ñ ¹É½ÕÁÍl‰µ…Œ‰t¹Y…±Õ”¹I•Á±…” œ´œ°€œèœ¤¹Q½UÁÁ•É%¹Ù…É¥…¹Ð ¤ì4(€€€€€€€ô4(€€€€€€€…Ñ 4(€€€€€€€ì4(€€€€€€€€€€€€¼¼5‘¥Í½Ù•Éä¥ÌÍÕÁÁ±•µ•¹Ñ…°¸4(€€€€€€€ô4(€€€€€€€É•ÑÕÉ¸É•ÍÕ±ÑÌì4(€€€ô4)ô4(4)¥¹Ñ•É¹…°ÍÑ…Ñ¥Œ±…ÍÌ=Õ¥1½½­ÕÀ4)ì4(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÉ•…‘½¹±ä¥Ñ¥½¹…ÉäñÍÑÉ¥¹œ°ÍÑÉ¥¹œø-¹½Ý¸€ô¹•Ü¡MÑÉ¥¹½µÁ…É•È¹=É‘¥¹…±%¹½É•…Í”¤4(€€€ì4(€€€€€€€lˆÜàèÐÔèÀÄ‰t€ô€‰	¥…µÀˆ°4(€€€€€€€lˆÀÀèÐÔéÔ‰t€ô€‰	…É¼ˆ4(€€€ôì4(4(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒÍÑÉ¥¹œ¥¹¡ÍÑÉ¥¹œµ…Œ¤4(€€€ì4(€€€€€€€¥˜€¡µ…Œ¹1•¹Ñ €ð€à¤É•ÑÕÉ¸ÍÑÉ¥¹œ¹µÁÑäì4(€€€€€€€É•ÑÕÉ¸-¹½Ý¸¹•ÑY…±Õ•=É•™…Õ±Ð¡µ…l¸¸át°€‰U¹­¹½Ý¸ˆ¤ì4(€€€ô4)ô4(

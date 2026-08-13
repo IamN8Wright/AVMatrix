@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using System.Net;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 public sealed class AppData
 {

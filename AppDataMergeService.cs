@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal enum MergeConflictPreference
 {

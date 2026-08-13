@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class PortableDataService
 {

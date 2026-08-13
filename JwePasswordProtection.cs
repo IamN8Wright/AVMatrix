@@ -4,10 +4,10 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 /// <summary>
-/// Password protection for portable AV Matrix files. The output is an RFC 7516
+/// Password protection for portable InNasc files. The output is an RFC 7516
 /// compact JWE using PBES2-HS256+A128KW and A256GCM.
 /// </summary>
 internal static class JwePasswordProtection
@@ -28,7 +28,7 @@ internal static class JwePasswordProtection
             Enc = Encryption,
             P2s = Base64UrlEncode(passwordSalt),
             P2c = Iterations,
-            Typ = "AVMatrixStudio"
+            Typ = "InNasc"
         };
         var protectedHeader = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header));
         var keyEncryptionKey = DeriveKey(password, passwordSalt, Iterations);
@@ -67,7 +67,7 @@ internal static class JwePasswordProtection
                 ?? throw new InvalidDataException("The password-protected file has no JWE header.");
             if (!string.Equals(header.Alg, Algorithm, StringComparison.Ordinal) ||
                 !string.Equals(header.Enc, Encryption, StringComparison.Ordinal))
-                throw new InvalidDataException("This JWE encryption method is not supported by AV Matrix Studio.");
+                throw new InvalidDataException("This JWE encryption method is not supported by InNasc.");
             if (header.P2c is < 10_000 or > 2_000_000 || string.IsNullOrWhiteSpace(header.P2s))
                 throw new InvalidDataException("The password-protected file has invalid key settings.");
 
@@ -211,7 +211,7 @@ internal static class JwePasswordProtection
     private static void ValidatePassword(string password)
     {
         if (string.IsNullOrEmpty(password))
-            throw new ArgumentException("A password is required for a protected AV Matrix file.", nameof(password));
+            throw new ArgumentException("A password is required for a protected InNasc file.", nameof(password));
     }
 
     private sealed class JweHeader

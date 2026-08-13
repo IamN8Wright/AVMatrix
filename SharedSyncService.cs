@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class SharedSyncService
 {
@@ -9,7 +9,7 @@ internal static class SharedSyncService
     {
         var fullPath = ValidatePath(path);
         if (!File.Exists(fullPath))
-            throw new FileNotFoundException("The company file file could not be found.", fullPath);
+            throw new FileNotFoundException("The company file could not be found.", fullPath);
         var contents = File.ReadAllBytes(fullPath);
         var imported = PortableDataService.ImportBytes(contents, password);
         return new SharedMasterSnapshot(
@@ -161,7 +161,7 @@ internal static class SharedSyncService
     {
         var fullPath = ValidatePath(path);
         if (!File.Exists(fullPath))
-            throw new FileNotFoundException("The company file file could not be found.", fullPath);
+            throw new FileNotFoundException("The company file could not be found.", fullPath);
         var access = PortableDataService.ReadMasterAccess(fullPath, legacyPassword);
         data.Settings.SharedMasterPath = fullPath;
         data.Settings.LastMasterTarget = nameof(SyncTarget.SharedFile);
@@ -502,7 +502,7 @@ internal static class SharedSyncService
     private static string ValidatePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException("Link a company file file first.");
+            throw new InvalidOperationException("Link a company file first.");
         var fullPath = Path.GetFullPath(path.Trim());
         if (!InNascFileTypes.IsCompanyPath(fullPath))
             throw new InvalidDataException(

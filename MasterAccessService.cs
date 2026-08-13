@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal sealed record MasterSession(
     Guid UserId,
@@ -51,7 +51,7 @@ internal static class MasterAccessService
         var session = SignIn(access, username, password);
         if (!session.IsOwner)
             throw new MasterAuthorizationException(
-                "The Owner must sign in first to migrate this legacy master to account-based unlocking.");
+                "The Owner must sign in first to migrate this legacy company to account-based unlocking.");
         if (!string.IsNullOrWhiteSpace(session.MasterKey)) return session;
         var masterKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var owner = RequiredUser(access, session.UserId);
@@ -402,7 +402,7 @@ internal static class MasterAccessService
             exception is FormatException or CryptographicException)
         {
             throw new MasterAuthorizationException(
-                "This account could not unlock the Master Matrix. Ask the Owner to reset its password.");
+                "This account could not unlock the company workspace. Ask the Owner to reset its password.");
         }
     }
 

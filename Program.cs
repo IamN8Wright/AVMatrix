@@ -1,4 +1,4 @@
-namespace AVMatrixStudio;
+namespace InNasc;
 
 internal static class Program
 {
@@ -12,36 +12,42 @@ internal static class Program
             ShowFatal(args.ExceptionObject as Exception ?? new Exception("Unknown application error."));
 
         var store = new DataStore();
-        var data = store.Load();
-
-        using (var startup = new InNascStartupForm())
+        while (true)
         {
-            if (startup.ShowDialog() != DialogResult.OK || startup.Selection is null)
-                return;
-            try
+            var data = store.Load();
+            UiTheme.SetDarkMode(data.Settings.DarkMode);
+            using (var startup = new InNascStartupForm())
             {
-                InNascCompanyOpenService.Open(data, store, startup.Selection);
+                if (startup.ShowDialog() != DialogResult.OK || startup.Selection is null)
+                    return;
+                try
+                {
+                    InNascCompanyOpenService.Open(data, store, startup.Selection);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        $"The selected company could not be opened.\r\n\r\n{exception.Message}",
+                        "Open InNasc company",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    continue;
+                }
             }
-            catch (Exception exception)
+
+            using var mainForm = new MainForm(data, store);
+            var signOutRequested = false;
+            mainForm.SignOutRequested += (_, _) => signOutRequested = true;
+            var startupUpdateChecked = false;
+            mainForm.Shown += async (_, _) =>
             {
-                MessageBox.Show(
-                    $"The selected company could not be opened.\r\n\r\n{exception.Message}",
-                    "Open InNasc company",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                return;
-            }
+                if (startupUpdateChecked) return;
+                startupUpdateChecked = true;
+                await CheckForStartupUpdateAsync(mainForm);
+            };
+            Application.Run(mainForm);
+            if (!signOutRequested) return;
         }
-
-        var mainForm = new MainForm(data, store);
-        var startupUpdateChecked = false;
-        mainForm.Shown += async (_, _) =>
-        {
-            if (startupUpdateChecked) return;
-            startupUpdateChecked = true;
-            await CheckForStartupUpdateAsync(mainForm);
-        };
-        Application.Run(mainForm);
     }
 
     private static async Task CheckForStartupUpdateAsync(Form owner)
