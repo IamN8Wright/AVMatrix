@@ -27,7 +27,7 @@ internal static class WindowsCredentialStore
             };
             if (!CredWrite(ref credential, 0))
                 throw new InvalidOperationException(
-                    $"Windows Credential Manager could not save the Google Drive sign-in ({Marshal.GetLastWin32Error()}).");
+                    $"Windows Credential Manager could not save '{targetName}' ({Marshal.GetLastWin32Error()}).");
         }
         finally
         {
@@ -63,14 +63,15 @@ internal static class WindowsCredentialStore
             var error = Marshal.GetLastWin32Error();
             if (error != 1168)
                 throw new InvalidOperationException(
-                    $"Windows Credential Manager could not remove the Google Drive sign-in ({error}).");
+                    $"Windows Credential Manager could not remove '{targetName}' ({error}).");
         }
     }
 
     private static void EnsureWindows()
     {
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Google Drive sign-in storage requires Windows.");
+            throw new PlatformNotSupportedException(
+                "AV Matrix Studio credential storage requires Windows.");
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -106,7 +107,6 @@ internal static class WindowsCredentialStore
 
     [DllImport("Advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode,
         SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CredDelete(string target, uint type, uint flags);
 
     [DllImport("Advapi32.dll")]
