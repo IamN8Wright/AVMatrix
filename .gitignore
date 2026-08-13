@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Local secrets / credentials
+*.pfx
+*.snk
+.env
+.env.*
+secrets.json
+appsettings.Local.json
+
+# AV Matrix customer data
+*.avmatrix
+*.avclient
+*.avmatrix.bak
+*.avclient.bak
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
