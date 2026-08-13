@@ -38,6 +38,81 @@ jobs:
             throw "Release tag ${{ github.ref_name }} does not match AVMatrixStudio.csproj version $appVersion."
           }
 
+      - name: Require production branding for releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $required = @(
+            'Assets\AVMatrixStudio.ico',
+            'Assets\AVMatrixStudioLogo.png',
+            'Assets\InN8LabsMascot.png',
+            'Assets\N8LogoDark.png',
+            'Assets\N8LogoLight.png'
+          )
+          $missing = @($required | Where-Object { -not (Test-Path $_) })
+          if ($missing.Count -gt 0) {
+            throw "Production branding assets are missing from GitHub: $($missing -join ', '). Add the original Assets folder before publishing a release."
+          }
+
+      - name: Create CI-only branding placeholders when originals are absent
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'Assets' -Force | Out-Null
+          Add-Type -AssemblyName System.Drawing
+
+          function New-PlaceholderPng([string]$Path, [int]$Width, [int]$Height, [string]$Text) {
+            if (Test-Path $Path) { return }
+            $bitmap = New-Object System.Drawing.Bitmap $Width, $Height
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
+              $fontSize = [Math]::Max(10, [Math]::Min($Width, $Height) / 5)
+              $font = New-Object System.Drawing.Font 'Arial', $fontSize, ([System.Drawing.FontStyle]::Bold)
+              $brush = [System.Drawing.Brushes]::White
+              $format = New-Object System.Drawing.StringFormat
+              $format.Alignment = [System.Drawing.StringAlignment]::Center
+              $format.LineAlignment = [System.Drawing.StringAlignment]::Center
+              $graphics.DrawString($Text, $font, $brush, (New-Object System.Drawing.RectangleF 0, 0, $Width, $Height), $format)
+              $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+              $font.Dispose()
+              $format.Dispose()
+            }
+            finally {
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            }
+          }
+
+          function New-PlaceholderIco([string]$Path) {
+            if (Test-Path $Path) { return }
+            $bitmap = New-Object System.Drawing.Bitmap 64, 64
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
+              $font = New-Object System.Drawing.Font 'Arial', 15, ([System.Drawing.FontStyle]::Bold)
+              $format = New-Object System.Drawing.StringFormat
+              $format.Alignment = [System.Drawing.StringAlignment]::Center
+              $format.LineAlignment = [System.Drawing.StringAlignment]::Center
+              $graphics.DrawString('AVM', $font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF 0, 0, 64, 64), $format)
+              $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+              $stream = [System.IO.File]::Create($Path)
+              try { $icon.Save($stream) } finally { $stream.Dispose(); $icon.Dispose() }
+              $font.Dispose()
+              $format.Dispose()
+            }
+            finally {
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            }
+          }
+
+          New-PlaceholderIco 'Assets\AVMatrixStudio.ico'
+          New-PlaceholderPng 'Assets\AVMatrixStudioLogo.png' 512 128 'AV Matrix Studio'
+          New-PlaceholderPng 'Assets\InN8LabsMascot.png' 256 256 'InN8'
+          New-PlaceholderPng 'Assets\N8LogoDark.png' 256 64 'InN8'
+          New-PlaceholderPng 'Assets\N8LogoLight.png' 256 64 'InN8'
+
       - name: Build Windows release
         shell: pwsh
         run: |
