@@ -1,10 +1,17 @@
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace AVMatrixStudio;
+
+internal sealed record AppReleaseInfo(
+    Version Version,
+    string Tag,
+    string ExecutableUrl,
+    string ChecksumUrl,
+    string ReleasePageUrl);
 
 internal sealed record AppUpdateCandidate(
     string ExecutablePath,
@@ -14,30 +21,52 @@ internal sealed record AppUpdateCandidate(
 
 internal static class AppUpdateService
 {
-    private const string ReleaseFileId = "1cpoK8XXEzzfLtajq8pX9iRDVPINFiPUe";
+    private const string GitHubOwner = "IamN8Wright";
+    private const string GitHubRepository = "AVMatrix";
+    private const string ExecutableAssetName = "AVMatrixStudio.exe";
+    private const string ChecksumAssetName = "AVMatrixStudio.exe.sha256";
     private const long MinimumExecutableBytes = 1_000_000;
+
+    private static string LatestReleaseApiUrl =>
+        $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepository}/releases/latest";
+
+    public static async Task<AppReleaseInfo> CheckLatestReleaseAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var http = CreateHttpClient();
+        return await ReadLatestReleaseAsync(http, cancellationToken);
+    }
 
     public static async Task<AppUpdateCandidate> DownloadAndVerifyAsync(
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        progress?.Report("Downloading the current release from Google Drive…");
+        progress?.Report("Checking GitHub for the latest AV Matrix Studio release…");
+        using var http = CreateHttpClient();
+        var release = await ReadLatestReleaseAsync(http, cancellationToken);
+
         var stagingDirectory = Path.Combine(
             Path.GetTempPath(),
             "AVMatrixStudio",
             "Updates",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stagingDirectory);
-        var packagePath = Path.Combine(stagingDirectory, "release.download");
+        var executablePath = Path.Combine(stagingDirectory, ExecutableAssetName);
 
         try
         {
-            await DownloadPublicDriveFileAsync(packagePath, cancellationToken);
-            progress?.Report("Verifying the AV Matrix Studio release…");
-            var executablePath = await ExtractExecutableAsync(
-                packagePath,
-                stagingDirectory,
+            progress?.Report($"Downloading AV Matrix Studio {release.Version} from GitHub…");
+            var expectedHash = await DownloadExpectedChecksumAsync(
+                http,
+                release.ChecksumUrl,
                 cancellationToken);
+            await DownloadFileAsync(
+                http,
+                release.ExecutableUrl,
+                executablePath,
+                cancellationToken);
+
+            progress?.Report("Verifying the GitHub release…");
             var info = new FileInfo(executablePath);
             if (info.Length < MinimumExecutableBytes)
                 throw new InvalidDataException(
@@ -55,17 +84,26 @@ internal static class AppUpdateService
                     "The downloaded executable is not identified as AV Matrix Studio.");
             if (!Version.TryParse(
                     versionInfo.ProductVersion?.Split('+')[0],
-                    out var releaseVersion))
+                    out var executableVersion))
                 throw new InvalidDataException(
                     "The downloaded release does not contain a readable product version.");
+            if (executableVersion != release.Version)
+                throw new InvalidDataException(
+                    $"The GitHub release tag is {release.Version}, but the downloaded executable " +
+                    $"identifies itself as {executableVersion}. The update was not installed.");
 
             await using var stream = File.OpenRead(executablePath);
-            var hash = Convert.ToHexString(
+            var computedHash = Convert.ToHexString(
                 await SHA256.HashDataAsync(stream, cancellationToken));
+            if (!string.Equals(computedHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "The downloaded executable did not match the SHA-256 checksum published " +
+                    "with the GitHub Release. The update was rejected.");
+
             return new AppUpdateCandidate(
                 executablePath,
-                releaseVersion,
-                hash,
+                executableVersion,
+                computedHash,
                 info.Length);
         }
         catch
@@ -75,13 +113,15 @@ internal static class AppUpdateService
         }
     }
 
-    public static bool IsNewer(AppUpdateCandidate candidate)
+    public static bool IsNewer(Version releaseVersion)
     {
         var current = Version.TryParse(AppInfo.Revision, out var parsed)
             ? parsed
             : new Version(0, 0, 0);
-        return candidate.Version > current;
+        return releaseVersion > current;
     }
+
+    public static bool IsNewer(AppUpdateCandidate candidate) => IsNewer(candidate.Version);
 
     public static void InstallAndRestart(AppUpdateCandidate candidate)
     {
@@ -132,6 +172,132 @@ internal static class AppUpdateService
         Application.Exit();
     }
 
+    private static HttpClient CreateHttpClient()
+    {
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = true,
+            AutomaticDecompression = DecompressionMethods.All
+        };
+        var http = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(15)
+        };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(
+            $"AV-Matrix-Studio/{AppInfo.Revision}");
+        http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        return http;
+    }
+
+    private static async Task<AppReleaseInfo> ReadLatestReleaseAsync(
+        HttpClient http,
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(LatestReleaseApiUrl, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new InvalidOperationException(
+                "No published AV Matrix Studio GitHub Release is available yet.");
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"GitHub returned {(int)response.StatusCode} {response.ReasonPhrase} while checking for updates.");
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var tag = RequiredString(root, "tag_name", "GitHub release tag");
+        var releasePageUrl = OptionalString(root, "html_url");
+        var versionText = tag.StartsWith('v') || tag.StartsWith('V')
+            ? tag[1..]
+            : tag;
+        if (!Version.TryParse(versionText, out var version))
+            throw new InvalidDataException(
+                $"The latest GitHub Release tag '{tag}' is not a valid AV Matrix Studio version.");
+
+        if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("The latest GitHub Release does not contain release assets.");
+
+        string? executableUrl = null;
+        string? checksumUrl = null;
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = OptionalString(asset, "name");
+            var downloadUrl = OptionalString(asset, "browser_download_url");
+            if (string.Equals(name, ExecutableAssetName, StringComparison.OrdinalIgnoreCase))
+                executableUrl = downloadUrl;
+            else if (string.Equals(name, ChecksumAssetName, StringComparison.OrdinalIgnoreCase))
+                checksumUrl = downloadUrl;
+        }
+
+        if (string.IsNullOrWhiteSpace(executableUrl))
+            throw new InvalidDataException(
+                $"The latest GitHub Release does not contain '{ExecutableAssetName}'.");
+        if (string.IsNullOrWhiteSpace(checksumUrl))
+            throw new InvalidDataException(
+                $"The latest GitHub Release does not contain '{ChecksumAssetName}'.");
+
+        return new AppReleaseInfo(
+            version,
+            tag,
+            executableUrl,
+            checksumUrl,
+            releasePageUrl);
+    }
+
+    private static async Task<string> DownloadExpectedChecksumAsync(
+        HttpClient http,
+        string url,
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        var tokens = text.Split(
+            new[] { ' ', '\t', '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries);
+        var checksum = tokens.FirstOrDefault()?.Trim() ?? string.Empty;
+        if (checksum.Length != 64 || checksum.Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidDataException(
+                "The GitHub Release checksum file does not contain a valid SHA-256 value.");
+        return checksum;
+    }
+
+    private static async Task DownloadFileAsync(
+        HttpClient http,
+        string url,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(
+            url,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var target = new FileStream(
+            destination,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            1024 * 128,
+            useAsync: true);
+        await source.CopyToAsync(target, cancellationToken);
+        await target.FlushAsync(cancellationToken);
+    }
+
+    private static string RequiredString(JsonElement element, string property, string label)
+    {
+        var value = OptionalString(element, property);
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidDataException($"The {label} is missing.");
+        return value;
+    }
+
+    private static string OptionalString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
     private static bool IsAvMatrixStudioExecutable(string path)
     {
         try
@@ -146,81 +312,6 @@ internal static class AppUpdateService
         {
             return false;
         }
-    }
-
-    private static async Task DownloadPublicDriveFileAsync(
-        string destination,
-        CancellationToken cancellationToken)
-    {
-        using var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            UseCookies = true,
-            CookieContainer = new CookieContainer()
-        };
-        using var http = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromMinutes(15)
-        };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(
-            $"AV-Matrix-Studio/{AppInfo.Revision}");
-
-        var url =
-            $"https://drive.usercontent.google.com/download?id={ReleaseFileId}&export=download&confirm=t";
-        using var response = await http.GetAsync(
-            url,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
-        if (mediaType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException(
-                "Google Drive returned a sharing page instead of the release. " +
-                "Set the update file to “Anyone with the link — Viewer” and try again.");
-
-        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var target = new FileStream(
-            destination,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            1024 * 128,
-            useAsync: true);
-        await source.CopyToAsync(target, cancellationToken);
-        await target.FlushAsync(cancellationToken);
-    }
-
-    private static async Task<string> ExtractExecutableAsync(
-        string packagePath,
-        string stagingDirectory,
-        CancellationToken cancellationToken)
-    {
-        var header = new byte[4];
-        await using (var stream = File.OpenRead(packagePath))
-            _ = await stream.ReadAsync(header, cancellationToken);
-
-        var executablePath = Path.Combine(stagingDirectory, "AVMatrixStudio.exe");
-        if (header[0] == (byte)'M' && header[1] == (byte)'Z')
-        {
-            File.Move(packagePath, executablePath, true);
-            return executablePath;
-        }
-        if (header[0] != (byte)'P' || header[1] != (byte)'K')
-            throw new InvalidDataException(
-                "The update file must be AVMatrixStudio.exe or a ZIP containing that executable.");
-
-        using var archive = ZipFile.OpenRead(packagePath);
-        var candidates = archive.Entries
-            .Where(entry => string.Equals(
-                Path.GetFileName(entry.FullName),
-                "AVMatrixStudio.exe",
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        if (candidates.Count != 1)
-            throw new InvalidDataException(
-                "The update ZIP must contain exactly one file named AVMatrixStudio.exe.");
-        candidates[0].ExtractToFile(executablePath, true);
-        return executablePath;
     }
 
     private static bool HasPortableExecutableHeader(string path)
