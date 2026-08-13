@@ -1,13 +1,113 @@
 namespace InNasc;
 
+internal sealed record InNascMembershipChoice(Guid CompanyId, bool Assigned, MasterUserRole Role);
+
+internal sealed class InNascCompanyMembershipRow : RoundedPanel
+{
+    private readonly CheckBox _assigned = new();
+    private readonly ComboBox _role = new();
+
+    public Guid CompanyId { get; }
+    public bool Assigned => _assigned.Checked;
+    public MasterUserRole Role => _role.SelectedItem is MasterUserRole role
+        ? role
+        : MasterUserRole.Tech;
+
+    public InNascCompanyMembershipRow(
+        InNascCompanyRecord company,
+        bool assigned,
+        MasterUserRole role,
+        bool globalAdmin = false)
+    {
+        CompanyId = company.Id;
+        Size = new Size(724, 62);
+        Margin = new Padding(0, 0, 0, 10);
+        BackColor = UiTheme.Surface;
+
+        _assigned.Text = "Assigned";
+        _assigned.AutoSize = true;
+        _assigned.Checked = globalAdmin || assigned;
+        _assigned.Location = new Point(16, 21);
+        _assigned.ForeColor = UiTheme.Text;
+        _assigned.CheckedChanged += (_, _) => RefreshRoleState();
+        Controls.Add(_assigned);
+
+        Controls.Add(new Label
+        {
+            Text = company.Name,
+            AutoSize = false,
+            AutoEllipsis = true,
+            Font = UiTheme.Font(10.5f, FontStyle.Bold),
+            ForeColor = UiTheme.Text,
+            Location = new Point(124, 10),
+            Size = new Size(380, 24),
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+        Controls.Add(new Label
+        {
+            Text = Path.GetFileName(company.FilePath),
+            AutoSize = false,
+            AutoEllipsis = true,
+            Font = UiTheme.Font(8.25f),
+            ForeColor = UiTheme.Muted,
+            Location = new Point(124, 33),
+            Size = new Size(380, 20),
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+
+        _role.DropDownStyle = ComboBoxStyle.DropDownList;
+        _role.Location = new Point(548, 16);
+        _role.Size = new Size(156, 30);
+        _role.Font = UiTheme.Font(9.5f);
+        foreach (var value in Enum.GetValues<MasterUserRole>()) _role.Items.Add(value);
+        _role.SelectedItem = globalAdmin ? MasterUserRole.Owner : role;
+        Controls.Add(_role);
+
+        if (globalAdmin)
+        {
+            _assigned.Enabled = false;
+            _role.Enabled = false;
+        }
+        else
+        {
+            RefreshRoleState();
+        }
+
+        UiTheme.ApplyTheme(this);
+    }
+
+    public InNascMembershipChoice Choice() => new(CompanyId, Assigned, Role);
+
+    public void SetGlobalAdmin(bool globalAdmin)
+    {
+        if (globalAdmin)
+        {
+            _assigned.Checked = true;
+            _assigned.Enabled = false;
+            _role.SelectedItem = MasterUserRole.Owner;
+            _role.Enabled = false;
+        }
+        else
+        {
+            _assigned.Enabled = true;
+            RefreshRoleState();
+        }
+    }
+
+    private void RefreshRoleState()
+    {
+        _role.Enabled = _assigned.Checked;
+    }
+}
+
 internal sealed class InNascMembershipForm : Form
 {
     private readonly InNascGlobalUserRecord _user;
     private readonly InNascGlobalCatalog _catalog;
-    private readonly DataGridView _grid = new();
+    private readonly FlowLayoutPanel _companyRows = new();
+    private readonly List<InNascCompanyMembershipRow> _rows = [];
 
-    public sealed record MembershipChoice(Guid CompanyId, bool Assigned, MasterUserRole Role);
-    public List<MembershipChoice> Choices { get; private set; } = [];
+    public List<InNascMembershipChoice> Choices { get; private set; } = [];
 
     public InNascMembershipForm(InNascGlobalUserRecord user, InNascGlobalCatalog catalog)
     {
@@ -15,13 +115,19 @@ internal sealed class InNascMembershipForm : Form
         _catalog = catalog;
         Text = $"Company access - {user.DisplayName}";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(720, 470);
-        Size = new Size(820, 540);
+        MinimumSize = new Size(760, 500);
+        Size = new Size(820, 560);
         BackColor = UiTheme.Canvas;
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 86, Padding = new Padding(24, 18, 24, 8) };
+        var header = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 92,
+            Padding = new Padding(24, 18, 24, 8),
+            BackColor = UiTheme.Canvas
+        };
         header.Controls.Add(InNascGlobalSetupForm.TitleLabel("Company access", 24, 14, 18, true));
         header.Controls.Add(InNascGlobalSetupForm.Description(
             user.IsGlobalAdmin
@@ -30,49 +136,30 @@ internal sealed class InNascMembershipForm : Form
             26, 50, 700, 28));
         Controls.Add(header);
 
-        _grid.Dock = DockStyle.Fill;
-        _grid.AllowUserToAddRows = false;
-        _grid.AllowUserToDeleteRows = false;
-        _grid.AutoGenerateColumns = false;
-        _grid.RowHeadersVisible = false;
-        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _grid.MultiSelect = false;
-        _grid.BackgroundColor = UiTheme.Canvas;
-        _grid.BorderStyle = BorderStyle.None;
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            Name = "Assigned",
-            HeaderText = "Assigned",
-            Width = 78
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Company",
-            HeaderText = "Company",
-            ReadOnly = true,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
-        });
-        var role = new DataGridViewComboBoxColumn
-        {
-            Name = "Role",
-            HeaderText = "Role",
-            Width = 140,
-            DataSource = Enum.GetValues<MasterUserRole>()
-        };
-        _grid.Columns.Add(role);
-        Controls.Add(_grid);
+        _companyRows.Dock = DockStyle.Fill;
+        _companyRows.AutoScroll = true;
+        _companyRows.FlowDirection = FlowDirection.TopDown;
+        _companyRows.WrapContents = false;
+        _companyRows.Padding = new Padding(24, 12, 24, 12);
+        _companyRows.BackColor = UiTheme.Canvas;
+        Controls.Add(_companyRows);
 
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 62,
+            Height = 64,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
-            Padding = new Padding(12)
+            Padding = new Padding(12),
+            BackColor = UiTheme.Canvas
         };
         var save = UiTheme.PrimaryButton("Save access");
+        save.AutoSize = false;
+        save.Size = new Size(106, 36);
         save.Click += (_, _) => SaveAndClose();
         var cancel = UiTheme.SecondaryButton("Cancel");
+        cancel.AutoSize = false;
+        cancel.Size = new Size(82, 36);
         cancel.DialogResult = DialogResult.Cancel;
         buttons.Controls.Add(save);
         buttons.Controls.Add(cancel);
@@ -86,37 +173,35 @@ internal sealed class InNascMembershipForm : Form
 
     private void Populate()
     {
-        foreach (var company in _catalog.Companies.Where(x => x.Enabled)
-                     .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
+        var companies = _catalog.Companies
+            .Where(x => x.Enabled)
+            .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        if (companies.Count == 0)
+        {
+            _companyRows.Controls.Add(InNascGlobalSetupForm.Description(
+                "No companies are available in this Global catalog yet.",
+                8, 8, 650, 34));
+            return;
+        }
+
+        foreach (var company in companies)
         {
             var membership = _user.Companies.FirstOrDefault(x => x.CompanyId == company.Id);
-            var row = _grid.Rows[_grid.Rows.Add(
-                _user.IsGlobalAdmin || membership is not null,
-                company.Name,
-                _user.IsGlobalAdmin ? MasterUserRole.Owner : membership?.Role ?? MasterUserRole.Tech)];
-            row.Tag = company.Id;
-            if (_user.IsGlobalAdmin)
-            {
-                row.Cells["Assigned"].ReadOnly = true;
-                row.Cells["Role"].ReadOnly = true;
-            }
+            var row = new InNascCompanyMembershipRow(
+                company,
+                membership is not null,
+                membership?.Role ?? MasterUserRole.Tech,
+                _user.IsGlobalAdmin);
+            _rows.Add(row);
+            _companyRows.Controls.Add(row);
         }
     }
 
     private void SaveAndClose()
     {
-        _grid.EndEdit();
-        Choices = _grid.Rows.Cast<DataGridViewRow>().Select(row =>
-        {
-            var companyId = (Guid)row.Tag!;
-            var assigned = row.Cells["Assigned"].Value is true;
-            var role = row.Cells["Role"].Value is MasterUserRole typed
-                ? typed
-                : Enum.TryParse<MasterUserRole>(Convert.ToString(row.Cells["Role"].Value), out var parsed)
-                    ? parsed
-                    : MasterUserRole.Tech;
-            return new MembershipChoice(companyId, assigned, role);
-        }).ToList();
+        Choices = _rows.Select(row => row.Choice()).ToList();
         DialogResult = DialogResult.OK;
         Close();
     }

@@ -114,14 +114,14 @@ internal sealed class InNascGlobalAdminForm : Form
         panel.Controls.Add(add);
         var access = UiTheme.SecondaryButton("Company access…");
         access.AutoSize = false;
-        access.Size = new Size(138, 36);
+        access.Size = new Size(146, 36);
         access.Location = new Point(134, 40);
         access.Click += (_, _) => EditAccess();
         panel.Controls.Add(access);
         var reset = UiTheme.SecondaryButton("Reset password");
         reset.AutoSize = false;
         reset.Size = new Size(126, 36);
-        reset.Location = new Point(280, 40);
+        reset.Location = new Point(288, 40);
         reset.Click += (_, _) => ResetPassword();
         panel.Controls.Add(reset);
 
@@ -248,15 +248,32 @@ internal sealed class InNascGlobalAdminForm : Form
 
     private void AddUser()
     {
-        using var form = new InNascGlobalUserEditorForm();
+        using var form = new InNascGlobalUserEditorForm(_catalog);
         if (form.ShowDialog(this) != DialogResult.OK) return;
         try
         {
             var user = InNascGlobalCoreService.AddUser(
                 _globalPath, _catalog, _session,
                 form.Username, form.DisplayName, form.Password, form.IsGlobalAdmin);
+
+            if (!form.IsGlobalAdmin)
+            {
+                foreach (var choice in form.CompanyChoices.Where(choice => choice.Assigned))
+                {
+                    user.Companies.Add(new InNascCompanyMembership
+                    {
+                        CompanyId = choice.CompanyId,
+                        Role = choice.Role
+                    });
+                }
+                InNascGlobalCoreService.Save(_globalPath, _catalog, _session);
+            }
+
             InNascCompanyAccessSyncService.SyncAll(_catalog, _session);
-            _status.Text = $"Added {user.DisplayName}. The password is stored only as a verifier and encrypted key wrapper.";
+            var companyCount = form.IsGlobalAdmin
+                ? "all companies"
+                : $"{user.Companies.Count} compan{(user.Companies.Count == 1 ? "y" : "ies")}";
+            _status.Text = $"Added {user.DisplayName} with access to {companyCount}. Passwords remain non-recoverable.";
             RefreshAll();
         }
         catch (Exception exception) { ShowError("Add user", exception); }
