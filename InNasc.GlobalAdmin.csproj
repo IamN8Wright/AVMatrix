@@ -11,7 +11,7 @@
     <AssemblyName>InNasc.GlobalAdmin</AssemblyName>
     <RootNamespace>InNasc</RootNamespace>
     <StartupObject>InNasc.GlobalAdminProgram</StartupObject>
-    <Version>5.2.0</Version>
+    <Version>5.2.1</Version>
     <Authors>InN8 Labs</Authors>
     <Copyright>Copyright (c) 2026 InN8 Labs</Copyright>
     <Product>InNasc Global Admin</Product>
