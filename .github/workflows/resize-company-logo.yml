@@ -1,0 +1,82 @@
+name: Resize company welcome logo
+
+on:
+  push:
+    branches:
+      - fix/larger-company-logo
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: startsWith(github.event.head_commit.message, 'Bootstrap larger company logo')
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: fix/larger-company-logo
+          fetch-depth: 0
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore supplemental branding
+        shell: pwsh
+        run: .\Restore-BrandAssets.ps1
+
+      - name: Enlarge company logo display area
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected patch target not found in {path}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'MasterWelcomeControl.cs',
+              '''        var logoHost = new Panel\n        {\n            Size = new Size(124, 112),\n            Anchor = AnchorStyles.None,\n            Margin = Padding.Empty,\n            BackColor = Color.Transparent\n        };\n        _defaultLogo = new InNascBrandLogo(124, 112) { Dock = DockStyle.Fill };\n''',
+              '''        // Company logos are often horizontal wordmarks. Give them a wider\n        // display area while keeping the default InNasc mark at its original size.\n        var logoHost = new Panel\n        {\n            Size = new Size(240, 112),\n            Anchor = AnchorStyles.None,\n            Margin = Padding.Empty,\n            BackColor = Color.Transparent\n        };\n        _defaultLogo = new InNascBrandLogo(124, 112)\n        {\n            Location = new Point(58, 0),\n            Anchor = AnchorStyles.None\n        };\n''')
+
+          for project in ['InNasc.csproj', 'InNasc.GlobalAdmin.csproj']:
+              p = Path(project)
+              text = p.read_text(encoding='utf-8')
+              if '<Version>5.2.2</Version>' not in text:
+                  raise SystemExit(f'Expected 5.2.2 version not found in {project}')
+              p.write_text(text.replace('<Version>5.2.2</Version>', '<Version>5.2.3</Version>', 1), encoding='utf-8')
+
+          Path('.github/workflows/resize-company-logo.yml').unlink()
+          '@ | Set-Content -Encoding UTF8 .resize_logo.py
+          python .resize_logo.py
+          Remove-Item .resize_logo.py
+
+      - name: Run user application smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
+
+      - name: Run Global Admin smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.GlobalAdmin.SmokeTests\InNasc.GlobalAdmin.SmokeTests.csproj --configuration Release
+
+      - name: Build both applications
+        shell: pwsh
+        run: |
+          dotnet build InNasc.csproj --configuration Release
+          dotnet build InNasc.GlobalAdmin.csproj --configuration Release
+
+      - name: Commit tested change
+        shell: pwsh
+        run: |
+          git config user.name "IamN8Wright"
+          git config user.email "iamn8wright@gmail.com"
+          git add MasterWelcomeControl.cs InNasc.csproj InNasc.GlobalAdmin.csproj .github/workflows/resize-company-logo.yml
+          git commit -m "Increase company welcome logo size"
+          git push origin HEAD:fix/larger-company-logo
