@@ -228,8 +228,8 @@ internal sealed class WorkspaceCopyPasteFeature : IDisposable, IMessageFilter
     {
         var menu = new ContextMenuStrip();
         menu.Items.Add("Clone room in this location…", null, (_, _) => CloneRoomInPlace(room));
-        var copyRoom = menu.Items.Add("Copy room", null, (_, _) => CopyRoom(room));
-        copyRoom.ShortcutKeyDisplayString = "Ctrl+C";
+        if (menu.Items.Add("Copy room", null, (_, _) => CopyRoom(room)) is ToolStripMenuItem copyRoom)
+            copyRoom.ShortcutKeyDisplayString = "Ctrl+C";
         if (_roomClipboard is not null)
             menu.Items.Add("Paste copied room into this location", null, (_, _) =>
             {
@@ -557,10 +557,11 @@ internal sealed class WorkspaceCopyPasteFeature : IDisposable, IMessageFilter
         TextRenderer.DrawText(e.Graphics, expanded ? "▼" : "▶", UiTheme.Font(9.5f, FontStyle.Bold), hit,
             UiTheme.Blue, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         var textBounds = new Rectangle(hit.Right + 7, e.CellBounds.Top, Math.Max(0, e.CellBounds.Right - hit.Right - 12), e.CellBounds.Height);
+        var style = e.CellStyle ?? _grid.DefaultCellStyle;
         var foreground = (e.State & DataGridViewElementStates.Selected) != 0
-            ? e.CellStyle.SelectionForeColor
-            : e.CellStyle.ForeColor;
-        TextRenderer.DrawText(e.Graphics, context.Equipment.Description, e.CellStyle.Font ?? _grid.Font,
+            ? style.SelectionForeColor
+            : style.ForeColor;
+        TextRenderer.DrawText(e.Graphics, context.Equipment.Description, style.Font ?? _grid.Font,
             textBounds, foreground, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         e.Handled = true;
     }
