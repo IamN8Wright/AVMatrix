@@ -80,14 +80,20 @@ internal sealed class MasterWelcomeControl : UserControl
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
 
+        // Company logos are often horizontal wordmarks. Give them a wider
+        // display area while keeping the default InNasc mark at its original size.
         var logoHost = new Panel
         {
-            Size = new Size(124, 112),
+            Size = new Size(240, 112),
             Anchor = AnchorStyles.None,
             Margin = Padding.Empty,
             BackColor = Color.Transparent
         };
-        _defaultLogo = new InNascBrandLogo(124, 112) { Dock = DockStyle.Fill };
+        _defaultLogo = new InNascBrandLogo(124, 112)
+        {
+            Location = new Point(58, 0),
+            Anchor = AnchorStyles.None
+        };
         _companyLogo = new PictureBox
         {
             Dock = DockStyle.Fill,
