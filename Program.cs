@@ -17,6 +17,7 @@ internal static class Program
             var data = store.Load();
             UiTheme.SetDarkMode(data.Settings.DarkMode);
             using var mainForm = new MainForm(data, store);
+            using var workspaceCopyPaste = WorkspaceCopyPasteFeature.Attach(mainForm, data, store);
             var signOutRequested = false;
             mainForm.SignOutRequested += (_, _) => signOutRequested = true;
             var startupUpdateChecked = false;
