@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\InNasc.ico</ApplicationIcon>
     <AssemblyName>InNasc</AssemblyName>
     <RootNamespace>InNasc</RootNamespace>
-    <Version>5.2.1</Version>
+    <Version>5.2.2</Version>
     <Authors>InN8 Labs</Authors>
     <Copyright>Copyright © 2026 InN8 Labs</Copyright>
     <Product>InNasc</Product>
@@ -20,6 +20,7 @@
     <Compile Remove="GlobalAdminProgram.cs" />
     <Compile Remove="InNascStartupForm.cs" />
     <Compile Remove="InNascCompanyAccessSyncService.cs" />
+    <Compile Remove="InNascCompanyGlobalAdminService.cs" />
     <Compile Remove="InNascCompanyCreateForm.cs" />
     <Compile Remove="InNascGlobalAdminForm.cs" />
     <Compile Remove="InNascGlobalConfigStore.cs" />
@@ -47,3 +48,4 @@
           ExcludeFromSingleFile="true" />
   </ItemGroup>
 </Project>
+

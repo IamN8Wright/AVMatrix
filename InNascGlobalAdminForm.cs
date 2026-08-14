@@ -179,17 +179,9 @@ internal sealed class InNascGlobalAdminForm : Form
             BackColor = UiTheme.Surface,
             Cursor = Cursors.Hand
         };
-        var initials = new Label
-        {
-            Text = Initials(company.Name),
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = UiTheme.LogoTile,
-            ForeColor = UiTheme.Blue,
-            Font = UiTheme.Font(16, FontStyle.Bold),
-            Location = new Point(18, 18),
-            Size = new Size(64, 64)
-        };
+        var initials = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(
+            company.Name, company.LogoBase64, 64);
+        initials.Location = new Point(18, 18);
         card.Controls.Add(initials);
         card.Controls.Add(new Label
         {
@@ -436,31 +428,42 @@ internal sealed class InNascCompanyAdminForm : Form
     private Control BuildHeader()
     {
         var panel = new Panel { Dock = DockStyle.Fill };
-        var tile = new Label
-        {
-            Text = string.Concat(_company.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0]))),
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = UiTheme.Font(17, FontStyle.Bold),
-            BackColor = UiTheme.LogoTile,
-            ForeColor = UiTheme.Blue,
-            Location = new Point(0, 4),
-            Size = new Size(66, 66)
-        };
+        var tile = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(
+            _company.Name, _company.LogoBase64, 66);
+        tile.Name = "CompanyBadge";
+        tile.Location = new Point(0, 4);
         panel.Controls.Add(tile);
-        panel.Controls.Add(InNascGlobalSetupForm.TitleLabel(_company.Name, 82, 3, 22, true));
+        var companyTitle = InNascGlobalSetupForm.TitleLabel(_company.Name, 82, 3, 22, true);
+        companyTitle.Name = "CompanyTitle";
+        panel.Controls.Add(companyTitle);
         _summary.Location = new Point(84, 44);
         _summary.Size = new Size(820, 30);
         _summary.ForeColor = UiTheme.Muted;
         panel.Controls.Add(_summary);
+        var rename = UiTheme.SecondaryButton("Rename company");
+        rename.AutoSize = false;
+        rename.Size = new Size(132, 38);
+        rename.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        rename.Click += (_, _) => RenameCompany();
+        panel.Controls.Add(rename);
+        var logo = UiTheme.SecondaryButton("Company logo");
+        logo.AutoSize = false;
+        logo.Size = new Size(122, 38);
+        logo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        logo.Click += (_, _) => ChangeCompanyLogo();
+        panel.Controls.Add(logo);
         var close = UiTheme.SecondaryButton("Back to companies");
         close.AutoSize = false;
         close.Size = new Size(144, 38);
         close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        close.Location = new Point(950, 15);
         close.DialogResult = DialogResult.OK;
         panel.Controls.Add(close);
-        panel.Resize += (_, _) => close.Left = panel.ClientSize.Width - close.Width;
+        panel.Resize += (_, _) =>
+        {
+            close.Left = panel.ClientSize.Width - close.Width;
+            logo.Left = close.Left - logo.Width - 10;
+            rename.Left = logo.Left - rename.Width - 10;
+        };
         return panel;
     }
 
@@ -469,10 +472,11 @@ internal sealed class InNascCompanyAdminForm : Form
         var card = new RoundedPanel { Dock = DockStyle.Fill, Padding = new Padding(18) };
         card.Controls.Add(InNascGlobalSetupForm.TitleLabel(".nasc licenses and device tiers", 18, 14, 13, true));
         var grant = Button("+ Grant .nasc", 18, GrantFile, true);
-        var limit = Button("Change tier", 144, ChangeLimit);
-        var sync = Button("Sync selected", 264, SyncSelectedFile);
-        var remove = Button("Remove grant", 404, RemoveFile);
-        card.Controls.AddRange([grant, limit, sync, remove]);
+        var import = Button("Import .nasc", 144, ImportFile);
+        var limit = Button("Change tier", 282, ChangeLimit);
+        var sync = Button("Sync selected", 420, SyncSelectedFile);
+        var remove = Button("Remove grant", 558, RemoveFile);
+        card.Controls.AddRange([grant, import, limit, sync, remove]);
         ConfigureList(_licenses);
         _licenses.Location = new Point(18, 92);
         _licenses.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -600,9 +604,122 @@ internal sealed class InNascCompanyAdminForm : Form
             var file = InNascGlobalCoreService.AddCompanyFile(
                 _globalPath, _catalog, _session, _company.Id,
                 form.FileName, form.CompanyPath, form.DeviceLimit);
-            _status.Text = $"Granted {file.Name} with a {DeviceLimitPolicy.LimitText(file.DeviceLimit)} tier.";
+            InNascCompanyGlobalAdminService.ApplyToFile(_company, file);
             RefreshAll(file.Id);
+            _status.Text = $"Granted {file.Name} with a {DeviceLimitPolicy.LimitText(file.DeviceLimit)} tier.";
         });
+    }
+
+    private void ImportFile()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = $"Import existing .nasc into {_company.Name}",
+            Filter = InNascFileTypes.CompanyOpenFilter,
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            var bytes = File.ReadAllBytes(dialog.FileName);
+            if (!PortableDataService.IsAccountProtected(bytes))
+                throw new InvalidDataException(
+                    "Import supports account-protected .nasc files. Use Migrate .avmatrix for a legacy company file.");
+            var access = PortableDataService.ReadMasterAccess(bytes);
+            var known = access.LicenseId == Guid.Empty
+                ? null
+                : _catalog.Companies.SelectMany(company => company.Files)
+                    .FirstOrDefault(file => file.Id == access.LicenseId &&
+                        !string.IsNullOrWhiteSpace(file.CompanyKeyBase64));
+            var companyKey = known?.CompanyKeyBase64;
+            if (string.IsNullOrWhiteSpace(companyKey))
+            {
+                if (!access.IsConfigured)
+                    throw new MasterAuthorizationException(
+                        "This .nasc has no company login that can unlock it and is not already known to this Global Admin catalog.");
+                var companySession = MasterSignInForm.Prompt(this, access);
+                if (companySession is null) return;
+                companyKey = companySession.MasterKey;
+            }
+            var file = InNascCompanyGlobalAdminService.ImportExisting(
+                _globalPath, _catalog, _session, _company, dialog.FileName, companyKey!);
+            RefreshAll(file.Id);
+            _status.Text = $"Imported {file.Name}. Existing company logins were preserved; its embedded company name now matches {_company.Name}.";
+        }
+        catch (Exception exception)
+        {
+            _status.Text = exception.Message;
+            MessageBox.Show(this, exception.Message, "Import .nasc", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void RenameCompany()
+    {
+        var name = InputDialog.Show(this, "Rename company", "Company name", _company.Name);
+        if (name is null || string.Equals(name.Trim(), _company.Name, StringComparison.Ordinal)) return;
+        Try("Rename company", () =>
+        {
+            InNascCompanyGlobalAdminService.RenameCompany(
+                _globalPath, _catalog, _session, _company, name);
+            Text = $"{_company.Name} - InNasc Global Admin";
+            var title = Controls.Find("CompanyTitle", true).FirstOrDefault();
+            if (title is not null) title.Text = _company.Name;
+            RefreshCompanyBadge();
+            RefreshAll();
+            _status.Text = $"Updated the embedded company name in {_company.Files.Count(file => file.Enabled):N0} .nasc license(s).";
+        });
+    }
+
+    private void ChangeCompanyLogo()
+    {
+        var choice = MessageBox.Show(this,
+            "Choose Yes to select or replace the company logo.\r\nChoose No to remove the embedded company logo.",
+            "Company logo", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
+        if (choice == DialogResult.Cancel) return;
+        if (choice == DialogResult.No)
+        {
+            Try("Remove company logo", () =>
+            {
+                InNascCompanyGlobalAdminService.SetCompanyLogo(
+                    _globalPath, _catalog, _session, _company, string.Empty);
+                RefreshCompanyBadge();
+                _status.Text = "Removed the embedded company logo. The InNasc logo will be used on the welcome page.";
+            });
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Choose company logo",
+            Filter = "Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        Try("Company logo", () =>
+        {
+            var logoBase64 = InNascCompanyEnvelopeMetadataService.ReadLogoFile(dialog.FileName);
+            InNascCompanyGlobalAdminService.SetCompanyLogo(
+                _globalPath, _catalog, _session, _company, logoBase64);
+            RefreshCompanyBadge();
+            _status.Text = $"Embedded the company logo in {_company.Files.Count(file => file.Enabled):N0} .nasc license(s).";
+        });
+    }
+
+    private void RefreshCompanyBadge()
+    {
+        var existing = Controls.Find("CompanyBadge", true).FirstOrDefault();
+        if (existing?.Parent is not Control parent) return;
+        var location = existing.Location;
+        var index = parent.Controls.GetChildIndex(existing);
+        parent.Controls.Remove(existing);
+        existing.Dispose();
+        var replacement = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(
+            _company.Name, _company.LogoBase64, 66);
+        replacement.Name = "CompanyBadge";
+        replacement.Location = location;
+        parent.Controls.Add(replacement);
+        parent.Controls.SetChildIndex(replacement, index);
     }
 
     private void ChangeLimit()
@@ -616,9 +733,9 @@ internal sealed class InNascCompanyAdminForm : Form
         {
             InNascGlobalCoreService.SetDeviceLimit(
                 _globalPath, _catalog, _session, _company.Id, file.Id, form.DeviceLimit);
-            InNascCompanyAccessSyncService.SyncFile(_globalPath, _catalog, _session, _company, file);
-            _status.Text = $"Changed {file.Name} to {DeviceLimitPolicy.LimitText(file.DeviceLimit)}.";
+            InNascCompanyGlobalAdminService.ApplyToFile(_company, file);
             RefreshAll(file.Id);
+            _status.Text = $"Changed {file.Name} to {DeviceLimitPolicy.LimitText(file.DeviceLimit)}.";
         });
     }
 

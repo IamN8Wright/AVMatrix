@@ -38,6 +38,8 @@ internal static class InNascCompanyAccessSyncService
         var old = data.MasterAccess ?? new MasterAccessControl();
         var next = InNascGlobalCoreService.BuildCompanyAccess(
             company, file, globalSession.GlobalKey, old);
+        if (!company.Users.Any(user => user.Enabled && user.CredentialReady) && old.Users.Count > 0)
+            next.Users = old.Users;
 
         var allowedUsers = next.Users.Select(user => user.Id).ToHashSet();
         next.Checkouts.RemoveAll(checkout => !allowedUsers.Contains(checkout.UserId));
@@ -46,6 +48,8 @@ internal static class InNascCompanyAccessSyncService
         var companySession = InNascGlobalCoreService.CreateCompanyFileSession(
             globalSession, file);
         PortableDataService.ExportMaster(file.FilePath, data, companySession);
+        InNascCompanyEnvelopeMetadataService.Apply(
+            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit, company.LogoBase64);
         _ = globalPath;
         _ = catalog;
     }

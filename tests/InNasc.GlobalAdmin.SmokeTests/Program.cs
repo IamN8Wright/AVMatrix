@@ -17,6 +17,7 @@ internal static class Program
         try
         {
             RunCompanyLicensingAndUserFlow(root);
+            RunCompanyImportAndBrandingFlow(root);
             RunLegacyMigrationFlow(root);
             RunV51CatalogUpgradeFlow(root);
             RunUiSeparationFlow(root);
@@ -140,6 +141,60 @@ internal static class Program
             globalPath, login.Catalog, login.Session, company.Id);
         Require(retained.Count == 2 && File.Exists(companyPath) && File.Exists(secondPath),
             "Deleting a company did not retain the physical .nasc files.");
+    }
+
+    private static void RunCompanyImportAndBrandingFlow(string root)
+    {
+        var globalPath = Path.Combine(root, "Branding.nascglobal");
+        var global = InNascGlobalCoreService.Create(
+            globalPath, "branding-admin", "Branding Admin", AdminPassword);
+        var targetPath = Path.Combine(root, "Branding-Target.nasc");
+        var company = InNascGlobalCoreService.CreateCompany(
+            globalPath, global.Catalog, global.Session, "Target Company", targetPath, 250);
+
+        var sourcePath = Path.Combine(root, "Imported-Existing.nasc");
+        var access = new MasterAccessControl();
+        _ = MasterAccessService.CreateInitialOwner(
+            access, "existing-owner", "Existing Owner", OwnerPassword);
+        var sourceSession = MasterAccessService.SignIn(access, "existing-owner", OwnerPassword);
+        var sourceData = new AppData
+        {
+            ProjectName = "Old Embedded Name",
+            Clients = [CompanyWithDevice("Imported")],
+            MasterAccess = access
+        };
+        PortableDataService.ExportMaster(sourcePath, sourceData, sourceSession);
+
+        var imported = InNascCompanyGlobalAdminService.ImportExisting(
+            globalPath, global.Catalog, global.Session, company, sourcePath, sourceSession.MasterKey);
+        Require(company.Files.Count == 2 && imported.FilePath == sourcePath,
+            "Existing .nasc file was not imported into the company card.");
+        _ = MasterAccessService.SignIn(PortableDataService.ReadMasterAccess(sourcePath),
+            "existing-owner", OwnerPassword);
+
+        using var logoBitmap = new Bitmap(8, 8);
+        using var logoStream = new MemoryStream();
+        logoBitmap.Save(logoStream, System.Drawing.Imaging.ImageFormat.Png);
+        var logoBase64 = Convert.ToBase64String(logoStream.ToArray());
+        InNascCompanyGlobalAdminService.SetCompanyLogo(
+            globalPath, global.Catalog, global.Session, company, logoBase64);
+        InNascCompanyGlobalAdminService.RenameCompany(
+            globalPath, global.Catalog, global.Session, company, "Branded Company");
+        InNascGlobalCoreService.SetDeviceLimit(
+            globalPath, global.Catalog, global.Session, company.Id, imported.Id, 500);
+        InNascCompanyGlobalAdminService.ApplyToFile(company, imported);
+
+        var summary = PortableDataService.ReadCompanySummary(sourcePath);
+        Require(summary.CompanyName == "Branded Company" && summary.DeviceLimit == 500 &&
+                summary.CompanyLogoBase64 == logoBase64,
+            "Embedded company name, tier, or logo did not update.");
+        Require(InNascCompanyEnvelopeMetadataService.DecodeLogo(summary.CompanyLogoBase64) is not null,
+            "Embedded company logo could not be decoded for the welcome page.");
+        var reopened = PortableDataService.Import(sourcePath, sourceSession.MasterKey).Data;
+        Require(reopened.ProjectName == "Branded Company" && reopened.MasterAccess.DeviceLimit == 500,
+            "Editable envelope metadata was not applied when opening the imported company.");
+        _ = MasterAccessService.SignIn(PortableDataService.ReadMasterAccess(sourcePath),
+            "existing-owner", OwnerPassword);
     }
 
     private static ClientRecord CompanyWithDevice(string name)

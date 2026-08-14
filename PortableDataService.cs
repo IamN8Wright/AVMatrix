@@ -115,8 +115,10 @@ internal static class PortableDataService
 
     public static PortableImport ImportBytes(byte[] contents, string? password = null)
     {
+        AccountEnvelope? accountEnvelope = null;
         if (TryReadAccountEnvelope(contents, out var envelope))
         {
+            accountEnvelope = envelope;
             if (string.IsNullOrWhiteSpace(password))
                 throw new MasterLoginRequiredException();
             contents = Convert.FromBase64String(envelope.PayloadBase64);
@@ -147,6 +149,20 @@ internal static class PortableDataService
             MasterAccess = package.MasterAccess ?? new MasterAccessControl(),
             Settings = new AppSettings()
         };
+        if (accountEnvelope is not null)
+        {
+            data.ProjectName = FirstNonBlank(
+                accountEnvelope.CompanyName,
+                accountEnvelope.LicenseName,
+                data.ProjectName);
+            data.MasterAccess.LicenseId = accountEnvelope.LicenseId;
+            data.MasterAccess.LicenseName = FirstNonBlank(
+                accountEnvelope.LicenseName,
+                accountEnvelope.CompanyName,
+                data.MasterAccess.LicenseName);
+            data.MasterAccess.DeviceLimit = accountEnvelope.DeviceLimit;
+            data.MasterAccess.Users = accountEnvelope.Users ?? data.MasterAccess.Users;
+        }
         DataStore.Normalize(data);
         return new PortableImport(
             data,
@@ -201,7 +217,8 @@ internal static class PortableDataService
                 companyName,
                 FirstNonBlank(envelope.LicenseName, companyName),
                 envelope.DeviceLimit,
-                true);
+                true,
+                envelope.CompanyLogoBase64);
         }
 
         var data = ImportBytes(contents, legacyPassword).Data;
@@ -282,6 +299,7 @@ internal static class PortableDataService
         public Guid LicenseId { get; set; }
         public string LicenseName { get; set; } = string.Empty;
         public int DeviceLimit { get; set; }
+        public string CompanyLogoBase64 { get; set; } = string.Empty;
         public List<MasterUserRecord>? Users { get; set; }
         public string PayloadBase64 { get; set; } = string.Empty;
     }
@@ -291,7 +309,8 @@ internal sealed record CompanyFileSummary(
     string CompanyName,
     string LicenseName,
     int DeviceLimit,
-    bool IsLicensed);
+    bool IsLicensed,
+    string CompanyLogoBase64 = "");
 
 internal sealed record PortableImport(
     AppData Data,
