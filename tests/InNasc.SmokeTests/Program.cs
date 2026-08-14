@@ -72,6 +72,9 @@ internal static class Program
         File.WriteAllText(legacyPath, json);
         Require(PortableDataService.Import(legacyPath).Data.Clients.Count == 1,
             "Legacy AV Matrix transfer data is no longer readable for Admin migration.");
+        var summary = PortableDataService.ReadCompanySummary(legacyPath);
+        Require(summary.CompanyName == "Legacy Company" && !summary.IsLicensed,
+            "Legacy company identity was not preserved for the welcome page.");
     }
 
     private static void RunDeviceLimitEnforcement(string root)
@@ -98,6 +101,22 @@ internal static class Program
         var published = PortableDataService.ReadMasterAccess(companyPath);
         Require(published.DeviceLimit == 1 && published.LicenseId == access.LicenseId,
             "The .nasc license metadata did not round-trip.");
+        var summary = PortableDataService.ReadCompanySummary(companyPath);
+        Require(summary.CompanyName == "Tiered Company" &&
+                summary.LicenseName == "Tiered Company" &&
+                summary.DeviceLimit == 1 && summary.IsLicensed,
+            "The company name and device tier were not exposed in the safe login metadata.");
+
+        var welcomeData = new AppData();
+        welcomeData.Settings.SharedMasterPath = companyPath;
+        using var welcome = new MasterWelcomeControl(welcomeData);
+        welcome.RefreshState();
+        var title = Descendants(welcome).OfType<Label>()
+            .Single(label => label.Name == "CompanyWelcomeTitle");
+        var tier = Descendants(welcome).OfType<Label>()
+            .Single(label => label.Name == "CompanyTierLabel");
+        Require(title.Text == "Welcome to Tiered Company" && tier.Text == "1 DEVICE TIER",
+            "The login welcome page did not display the embedded company name and tier.");
         RequireThrows<DeviceLimitExceededException>(() =>
             DeviceLimitPolicy.RequireCapacity(published, data, 1));
         room.Equipment.Add(new EquipmentRecord { Description = "Two" });

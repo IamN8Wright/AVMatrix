@@ -70,6 +70,9 @@ internal static class PortableDataService
             Format = AccountEnvelopeFormat,
             FormatVersion = AccountEnvelopeVersion,
             MasterId = data.MasterAccess.MasterId,
+            CompanyName = string.IsNullOrWhiteSpace(data.ProjectName)
+                ? data.MasterAccess.LicenseName
+                : data.ProjectName.Trim(),
             LicenseId = data.MasterAccess.LicenseId,
             LicenseName = data.MasterAccess.LicenseName,
             DeviceLimit = data.MasterAccess.DeviceLimit,
@@ -184,6 +187,40 @@ internal static class PortableDataService
     public static MasterAccessControl ReadMasterAccess(string path, string? legacyPassword = null) =>
         ReadMasterAccess(File.ReadAllBytes(path), legacyPassword);
 
+    public static CompanyFileSummary ReadCompanySummary(
+        byte[] contents,
+        string? legacyPassword = null)
+    {
+        if (TryReadAccountEnvelope(contents, out var envelope))
+        {
+            var companyName = FirstNonBlank(
+                envelope.CompanyName,
+                envelope.LicenseName,
+                "InNasc Company");
+            return new CompanyFileSummary(
+                companyName,
+                FirstNonBlank(envelope.LicenseName, companyName),
+                envelope.DeviceLimit,
+                true);
+        }
+
+        var data = ImportBytes(contents, legacyPassword).Data;
+        return new CompanyFileSummary(
+            FirstNonBlank(data.ProjectName, data.MasterAccess.LicenseName, "InNasc Company"),
+            FirstNonBlank(data.MasterAccess.LicenseName, data.ProjectName),
+            data.MasterAccess.DeviceLimit,
+            data.MasterAccess.LicenseId != Guid.Empty);
+    }
+
+    public static CompanyFileSummary ReadCompanySummary(
+        string path,
+        string? legacyPassword = null) =>
+        ReadCompanySummary(File.ReadAllBytes(path), legacyPassword);
+
+    private static string FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
+        ?? string.Empty;
+
     private static bool TryReadAccountEnvelope(byte[] contents, out AccountEnvelope envelope)
     {
         envelope = null!;
@@ -241,6 +278,7 @@ internal static class PortableDataService
         public string Format { get; set; } = string.Empty;
         public int FormatVersion { get; set; }
         public Guid MasterId { get; set; }
+        public string CompanyName { get; set; } = string.Empty;
         public Guid LicenseId { get; set; }
         public string LicenseName { get; set; } = string.Empty;
         public int DeviceLimit { get; set; }
@@ -248,6 +286,12 @@ internal static class PortableDataService
         public string PayloadBase64 { get; set; } = string.Empty;
     }
 }
+
+internal sealed record CompanyFileSummary(
+    string CompanyName,
+    string LicenseName,
+    int DeviceLimit,
+    bool IsLicensed);
 
 internal sealed record PortableImport(
     AppData Data,

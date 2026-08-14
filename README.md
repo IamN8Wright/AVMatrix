@@ -19,6 +19,8 @@ The user application does not create company files, change device tiers, or admi
 - `.nasc` is an encrypted company database/license and contains the company-local login envelope and device limit published by Global Admin. A company may have multiple independently tiered `.nasc` files.
 - `.nascclient` stores optional client payloads and configuration-file contents beside the company database.
 
+Before sign-in, the InNasc welcome page reads only safe envelope metadata and displays the embedded company name, license name when distinct, and device tier. Inventory data and credentials remain encrypted.
+
 Passwords remain non-recoverable. Global Admin stores salted PBKDF2 verifiers and encrypted credential material that lets it publish a company user into the company's `.nasc` files without storing plaintext passwords. Existing 5.1 catalogs are upgraded automatically on the first Global Admin sign-in; an upgraded company user whose legacy publishing credential is unavailable is clearly marked for one password reset.
 
 ## Legacy compatibility
