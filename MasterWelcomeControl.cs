@@ -8,6 +8,8 @@ internal sealed class MasterWelcomeControl : UserControl
     private readonly Label _tier = new();
     private readonly Label _selection = new();
     private readonly Label _message = new();
+    private InNascBrandLogo _defaultLogo = null!;
+    private PictureBox _companyLogo = null!;
     private readonly TextBox _username = new();
     private readonly TextBox _password = new();
     private Button _signIn = null!;
@@ -78,11 +80,25 @@ internal sealed class MasterWelcomeControl : UserControl
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
 
-        var logo = new InNascBrandLogo(124, 112)
+        var logoHost = new Panel
         {
-            Anchor = AnchorStyles.None
+            Size = new Size(124, 112),
+            Anchor = AnchorStyles.None,
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
         };
-        heading.Controls.Add(logo, 0, 0);
+        _defaultLogo = new InNascBrandLogo(124, 112) { Dock = DockStyle.Fill };
+        _companyLogo = new PictureBox
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Visible = false
+        };
+        _companyLogo.Disposed += (_, _) => _companyLogo.Image?.Dispose();
+        logoHost.Controls.Add(_defaultLogo);
+        logoHost.Controls.Add(_companyLogo);
+        heading.Controls.Add(logoHost, 0, 0);
 
         _welcomeTitle.Name = "CompanyWelcomeTitle";
         _welcomeTitle.Text = "Welcome to InNasc";
@@ -326,6 +342,7 @@ internal sealed class MasterWelcomeControl : UserControl
 
     private void ShowCompanyIdentity(CompanyFileSummary? summary)
     {
+        ShowCompanyLogo(summary?.CompanyLogoBase64);
         if (summary is null || string.IsNullOrWhiteSpace(summary.CompanyName))
         {
             _welcomeTitle.Text = "Welcome to InNasc";
@@ -350,6 +367,16 @@ internal sealed class MasterWelcomeControl : UserControl
                                     StringComparison.OrdinalIgnoreCase)
             ? $"License: {summary.LicenseName}  -  Sign in to open this company workspace."
             : "Sign in to open this company workspace.";
+    }
+
+    private void ShowCompanyLogo(string? logoBase64)
+    {
+        var image = InNascCompanyEnvelopeMetadataService.DecodeLogo(logoBase64);
+        var previous = _companyLogo.Image;
+        _companyLogo.Image = image;
+        _companyLogo.Visible = image is not null;
+        _defaultLogo.Visible = image is null;
+        previous?.Dispose();
     }
 
     public void SelectTarget(SyncTarget target)

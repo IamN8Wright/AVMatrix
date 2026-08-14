@@ -482,6 +482,8 @@ internal static class InNascGlobalCoreService
             MasterAccess = BuildCompanyAccess(company, file, session.GlobalKey)
         };
         PortableDataService.ExportMaster(file.FilePath, data, CreateCompanyFileSession(session, file));
+        InNascCompanyEnvelopeMetadataService.Apply(
+            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit, company.LogoBase64);
     }
 
     private static bool UpgradeCatalog(
