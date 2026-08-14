@@ -84,6 +84,9 @@ public sealed class ClientCheckoutRecord
 public sealed class MasterAccessControl
 {
     public Guid MasterId { get; set; } = Guid.NewGuid();
+    public Guid LicenseId { get; set; }
+    public string LicenseName { get; set; } = string.Empty;
+    public int DeviceLimit { get; set; }
     public List<MasterUserRecord> Users { get; set; } = [];
     public List<ClientCheckoutRecord> Checkouts { get; set; } = [];
     public List<ClientSubmatrixReference> ClientSubmatrices { get; set; } = [];

@@ -1827,6 +1827,7 @@ public sealed class MainForm : Form
         }
         var identity =
             $"Signed in as {active.Session.DisplayName} ({MasterSignInNotification.RoleText(active.Session.Role)})";
+        identity += $"  -  {DeviceLimitPolicy.UsageText(_data.MasterAccess, _data)}";
         _signedInLabel.Text = active.Target == SyncTarget.GoogleDrive &&
                               !string.IsNullOrWhiteSpace(_liveCoauthoringStatus)
             ? $"● {_liveCoauthoringStatus}  •  {identity}"
@@ -2194,6 +2195,7 @@ public sealed class MainForm : Form
     private void AddEquipment()
     {
         if (!EnsureWorkspaceWritable()) return;
+        if (!EnsureDeviceCapacity(1)) return;
         var room = ResolveRoomForEntry();
         if (room is null)
         {
@@ -2234,6 +2236,7 @@ public sealed class MainForm : Form
     private void DuplicateSelectedEquipment()
     {
         if (!EnsureWorkspaceWritable()) return;
+        if (!EnsureDeviceCapacity(1)) return;
         if (SelectedEquipmentContext() is not { } selected) return;
         var duplicate = selected.Equipment.CloneForDuplicate();
         selected.Room.Equipment.Add(duplicate);
@@ -2961,6 +2964,11 @@ public sealed class MainForm : Form
                 return;
             }
 
+            DeviceLimitPolicy.RequireCapacity(
+                _data.MasterAccess,
+                _data,
+                plan.AddedDevices);
+
             var result = ExcelImportMergeService.Apply(
                 client,
                 location,
@@ -3070,6 +3078,21 @@ public sealed class MainForm : Form
             .Select(character => invalid.Contains(character) ? '-' : character)
             .ToArray()).Trim(' ', '.', '-');
         return string.IsNullOrWhiteSpace(cleaned) ? "Client" : cleaned;
+    }
+
+    private bool EnsureDeviceCapacity(int additionalDevices)
+    {
+        try
+        {
+            DeviceLimitPolicy.RequireCapacity(_data.MasterAccess, _data, additionalDevices);
+            return true;
+        }
+        catch (DeviceLimitExceededException exception)
+        {
+            MessageBox.Show(this, exception.Message, "Device limit reached",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return false;
+        }
     }
 
     private bool EnsureWorkspaceWritable(ClientRecord? targetClient = null)
