@@ -1,0 +1,447 @@
+name: Apply company branding and import patch
+
+on:
+  push:
+    branches:
+      - agent/innasc-company-tiers
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: startsWith(github.event.head_commit.message, 'Bootstrap company branding patch')
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: agent/innasc-company-tiers
+          fetch-depth: 0
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Add company metadata services
+        shell: pwsh
+        run: |
+          @'
+          using System.Text;
+          using System.Text.Json;
+          using System.Text.Json.Nodes;
+
+          namespace InNasc;
+
+          internal static class InNascCompanyEnvelopeMetadataService
+          {
+              private const string AccountEnvelopeFormat = "InNasc Account Envelope";
+              private const string LegacyAccountEnvelopeFormat = "AV Matrix Studio Account Envelope";
+              private const int MaxLogoBytes = 2 * 1024 * 1024;
+
+              public static void Apply(
+                  string path,
+                  string companyName,
+                  string licenseName,
+                  Guid licenseId,
+                  int deviceLimit,
+                  string? companyLogoBase64)
+              {
+                  var fullPath = Path.GetFullPath(path);
+                  var bytes = File.ReadAllBytes(fullPath);
+                  JsonObject root;
+                  try
+                  {
+                      root = JsonNode.Parse(Encoding.UTF8.GetString(bytes)) as JsonObject
+                          ?? throw new InvalidDataException("The .nasc file envelope is unreadable.");
+                  }
+                  catch (JsonException exception)
+                  {
+                      throw new InvalidDataException("The .nasc file envelope is unreadable.", exception);
+                  }
+
+                  var format = root["Format"]?.GetValue<string>() ?? string.Empty;
+                  if (!string.Equals(format, AccountEnvelopeFormat, StringComparison.Ordinal) &&
+                      !string.Equals(format, LegacyAccountEnvelopeFormat, StringComparison.Ordinal))
+                      throw new InvalidDataException(
+                          "This .nasc file is not an account-protected InNasc company file.");
+
+                  root["CompanyName"] = JsonValue.Create(companyName.Trim());
+                  root["LicenseName"] = JsonValue.Create(string.IsNullOrWhiteSpace(licenseName)
+                      ? companyName.Trim()
+                      : licenseName.Trim());
+                  root["LicenseId"] = JsonValue.Create(licenseId);
+                  root["DeviceLimit"] = JsonValue.Create(deviceLimit);
+                  root["CompanyLogoBase64"] = JsonValue.Create(companyLogoBase64?.Trim() ?? string.Empty);
+
+                  var updated = JsonSerializer.SerializeToUtf8Bytes(root, new JsonSerializerOptions
+                  {
+                      WriteIndented = true
+                  });
+                  WriteAtomically(fullPath, updated);
+              }
+
+              public static string ReadLogoFile(string path)
+              {
+                  var fullPath = Path.GetFullPath(path);
+                  var info = new FileInfo(fullPath);
+                  if (!info.Exists) throw new FileNotFoundException("The logo file could not be found.", fullPath);
+                  if (info.Length <= 0) throw new InvalidDataException("The selected logo file is empty.");
+                  if (info.Length > MaxLogoBytes)
+                      throw new InvalidDataException("Company logos must be 2 MB or smaller.");
+                  var bytes = File.ReadAllBytes(fullPath);
+                  using var stream = new MemoryStream(bytes, writable: false);
+                  using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+                  if (image.Width <= 0 || image.Height <= 0)
+                      throw new InvalidDataException("The selected file is not a usable image.");
+                  return Convert.ToBase64String(bytes);
+              }
+
+              public static Image? DecodeLogo(string? logoBase64)
+              {
+                  if (string.IsNullOrWhiteSpace(logoBase64)) return null;
+                  try
+                  {
+                      var bytes = Convert.FromBase64String(logoBase64);
+                      using var stream = new MemoryStream(bytes, writable: false);
+                      using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+                      return new Bitmap(image);
+                  }
+                  catch (Exception exception) when (
+                      exception is FormatException or ArgumentException or OutOfMemoryException)
+                  {
+                      return null;
+                  }
+              }
+
+              public static Control CreateCompanyBadge(string companyName, string? logoBase64, int size)
+              {
+                  var image = DecodeLogo(logoBase64);
+                  if (image is not null)
+                  {
+                      var picture = new PictureBox
+                      {
+                          AutoSize = false,
+                          Size = new Size(size, size),
+                          BackColor = Color.White,
+                          SizeMode = PictureBoxSizeMode.Zoom,
+                          Image = image
+                      };
+                      picture.Disposed += (_, _) => picture.Image?.Dispose();
+                      return picture;
+                  }
+
+                  var words = companyName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                  var initials = string.Concat(words.Take(2).Select(word => char.ToUpperInvariant(word[0])));
+                  return new Label
+                  {
+                      Text = initials,
+                      AutoSize = false,
+                      TextAlign = ContentAlignment.MiddleCenter,
+                      BackColor = UiTheme.LogoTile,
+                      ForeColor = UiTheme.Blue,
+                      Font = UiTheme.Font(Math.Max(12, size / 4f), FontStyle.Bold),
+                      Size = new Size(size, size)
+                  };
+              }
+
+              private static void WriteAtomically(string path, byte[] bytes)
+              {
+                  var directory = Path.GetDirectoryName(path) ?? Path.GetTempPath();
+                  Directory.CreateDirectory(directory);
+                  var temporary = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+                  try
+                  {
+                      File.WriteAllBytes(temporary, bytes);
+                      File.Move(temporary, path, true);
+                  }
+                  finally
+                  {
+                      if (File.Exists(temporary)) File.Delete(temporary);
+                  }
+              }
+          }
+          '@ | Set-Content -Encoding UTF8 InNascCompanyEnvelopeMetadataService.cs
+
+          @'
+          namespace InNasc;
+
+          internal static class InNascCompanyGlobalAdminService
+          {
+              public static InNascCompanyFileRecord ImportExisting(
+                  string globalPath,
+                  InNascGlobalCatalog catalog,
+                  InNascGlobalSession session,
+                  InNascCompanyRecord company,
+                  string sourcePath,
+                  string companyKeyBase64)
+              {
+                  RequireAdmin(session);
+                  var fullPath = Path.GetFullPath(sourcePath.Trim());
+                  if (!string.Equals(Path.GetExtension(fullPath), InNascFileTypes.CompanyExtension,
+                          StringComparison.OrdinalIgnoreCase))
+                      throw new InvalidDataException("Choose an existing .nasc company file.");
+                  if (!File.Exists(fullPath))
+                      throw new FileNotFoundException("The selected .nasc file could not be found.", fullPath);
+                  if (catalog.Companies.SelectMany(candidate => candidate.Files).Any(file =>
+                          string.Equals(file.FilePath, fullPath, StringComparison.OrdinalIgnoreCase)))
+                      throw new InvalidOperationException(
+                          "That .nasc file is already assigned to a company in this Global Admin catalog.");
+                  if (string.IsNullOrWhiteSpace(companyKeyBase64))
+                      throw new MasterAuthorizationException(
+                          "A valid company sign-in is required before this .nasc can be imported.");
+
+                  var originalBytes = File.ReadAllBytes(fullPath);
+                  var imported = PortableDataService.ImportBytes(originalBytes, companyKeyBase64);
+                  var summary = PortableDataService.ReadCompanySummary(originalBytes);
+                  var currentCount = DeviceLimitPolicy.CountDevices(imported.Data);
+                  if (summary.DeviceLimit > 0 && currentCount > summary.DeviceLimit)
+                      throw new InvalidDataException(
+                          $"The selected .nasc reports a {summary.DeviceLimit:N0}-device tier but contains {currentCount:N0} devices.");
+
+                  var file = new InNascCompanyFileRecord
+                  {
+                      Name = FirstNonBlank(summary.LicenseName, Path.GetFileNameWithoutExtension(fullPath), company.Name),
+                      FilePath = fullPath,
+                      CompanyKeyBase64 = companyKeyBase64,
+                      DeviceLimit = summary.DeviceLimit
+                  };
+                  company.Files.Add(file);
+                  try
+                  {
+                      ApplyToFile(company, file);
+                      InNascGlobalCoreService.Save(globalPath, catalog, session);
+                      return file;
+                  }
+                  catch
+                  {
+                      company.Files.Remove(file);
+                      try { File.WriteAllBytes(fullPath, originalBytes); } catch { }
+                      throw;
+                  }
+              }
+
+              public static void RenameCompany(
+                  string globalPath,
+                  InNascGlobalCatalog catalog,
+                  InNascGlobalSession session,
+                  InNascCompanyRecord company,
+                  string newName)
+              {
+                  RequireAdmin(session);
+                  var name = newName.Trim();
+                  if (name.Length == 0) throw new InvalidOperationException("Enter a company name.");
+                  if (catalog.Companies.Any(candidate => candidate.Enabled && candidate.Id != company.Id &&
+                          string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase)))
+                      throw new InvalidOperationException("A company with that name already exists.");
+
+                  var previous = company.Name;
+                  company.Name = name;
+                  try
+                  {
+                      ApplyAll(company);
+                      InNascGlobalCoreService.Save(globalPath, catalog, session);
+                  }
+                  catch
+                  {
+                      company.Name = previous;
+                      TryApplyAll(company);
+                      throw;
+                  }
+              }
+
+              public static void SetCompanyLogo(
+                  string globalPath,
+                  InNascGlobalCatalog catalog,
+                  InNascGlobalSession session,
+                  InNascCompanyRecord company,
+                  string? logoBase64)
+              {
+                  RequireAdmin(session);
+                  var previous = company.LogoBase64;
+                  company.LogoBase64 = logoBase64?.Trim() ?? string.Empty;
+                  try
+                  {
+                      ApplyAll(company);
+                      InNascGlobalCoreService.Save(globalPath, catalog, session);
+                  }
+                  catch
+                  {
+                      company.LogoBase64 = previous;
+                      TryApplyAll(company);
+                      throw;
+                  }
+              }
+
+              public static void ApplyToFile(InNascCompanyRecord company, InNascCompanyFileRecord file)
+              {
+                  if (!file.Enabled || !File.Exists(file.FilePath)) return;
+                  InNascCompanyEnvelopeMetadataService.Apply(
+                      file.FilePath,
+                      company.Name,
+                      file.Name,
+                      file.Id,
+                      file.DeviceLimit,
+                      company.LogoBase64);
+              }
+
+              private static void ApplyAll(InNascCompanyRecord company)
+              {
+                  foreach (var file in company.Files.Where(file => file.Enabled && File.Exists(file.FilePath)))
+                      ApplyToFile(company, file);
+              }
+
+              private static void TryApplyAll(InNascCompanyRecord company)
+              {
+                  try { ApplyAll(company); } catch { }
+              }
+
+              private static void RequireAdmin(InNascGlobalSession session)
+              {
+                  if (!session.IsGlobalAdmin)
+                      throw new MasterAuthorizationException("Global Admin access is required.");
+              }
+
+              private static string FirstNonBlank(params string?[] values) =>
+                  values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
+                  ?? string.Empty;
+          }
+          '@ | Set-Content -Encoding UTF8 InNascCompanyGlobalAdminService.cs
+
+      - name: Patch existing source
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected patch target not found in {path}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # User app must not compile the Global-Admin-only service.
+          replace_once('InNasc.csproj',
+          '''    <Compile Remove="InNascCompanyAccessSyncService.cs" />\n''',
+          '''    <Compile Remove="InNascCompanyAccessSyncService.cs" />\n    <Compile Remove="InNascCompanyGlobalAdminService.cs" />\n''')
+
+          # Make the account envelope authoritative for editable company metadata and expose embedded logo in summaries.
+          replace_once('PortableDataService.cs',
+          '''    public static PortableImport ImportBytes(byte[] contents, string? password = null)\n    {\n        if (TryReadAccountEnvelope(contents, out var envelope))\n        {\n            if (string.IsNullOrWhiteSpace(password))\n                throw new MasterLoginRequiredException();\n            contents = Convert.FromBase64String(envelope.PayloadBase64);\n        }\n''',
+          '''    public static PortableImport ImportBytes(byte[] contents, string? password = null)\n    {\n        AccountEnvelope? accountEnvelope = null;\n        if (TryReadAccountEnvelope(contents, out var envelope))\n        {\n            accountEnvelope = envelope;\n            if (string.IsNullOrWhiteSpace(password))\n                throw new MasterLoginRequiredException();\n            contents = Convert.FromBase64String(envelope.PayloadBase64);\n        }\n''')
+
+          replace_once('PortableDataService.cs',
+          '''        var data = new AppData\n        {\n            ProjectName = string.IsNullOrWhiteSpace(package.ProjectName)\n                ? "InNasc"\n                : package.ProjectName.Trim(),\n            Clients = package.Clients,\n            MasterAccess = package.MasterAccess ?? new MasterAccessControl(),\n            Settings = new AppSettings()\n        };\n        DataStore.Normalize(data);\n''',
+          '''        var data = new AppData\n        {\n            ProjectName = string.IsNullOrWhiteSpace(package.ProjectName)\n                ? "InNasc"\n                : package.ProjectName.Trim(),\n            Clients = package.Clients,\n            MasterAccess = package.MasterAccess ?? new MasterAccessControl(),\n            Settings = new AppSettings()\n        };\n        if (accountEnvelope is not null)\n        {\n            data.ProjectName = FirstNonBlank(\n                accountEnvelope.CompanyName,\n                accountEnvelope.LicenseName,\n                data.ProjectName);\n            data.MasterAccess.LicenseId = accountEnvelope.LicenseId;\n            data.MasterAccess.LicenseName = FirstNonBlank(\n                accountEnvelope.LicenseName,\n                accountEnvelope.CompanyName,\n                data.MasterAccess.LicenseName);\n            data.MasterAccess.DeviceLimit = accountEnvelope.DeviceLimit;\n            data.MasterAccess.Users = accountEnvelope.Users ?? data.MasterAccess.Users;\n        }\n        DataStore.Normalize(data);\n''')
+
+          replace_once('PortableDataService.cs',
+          '''            return new CompanyFileSummary(\n                companyName,\n                FirstNonBlank(envelope.LicenseName, companyName),\n                envelope.DeviceLimit,\n                true);\n''',
+          '''            return new CompanyFileSummary(\n                companyName,\n                FirstNonBlank(envelope.LicenseName, companyName),\n                envelope.DeviceLimit,\n                true,\n                envelope.CompanyLogoBase64);\n''')
+
+          replace_once('PortableDataService.cs',
+          '''        public int DeviceLimit { get; set; }\n        public List<MasterUserRecord>? Users { get; set; }\n''',
+          '''        public int DeviceLimit { get; set; }\n        public string CompanyLogoBase64 { get; set; } = string.Empty;\n        public List<MasterUserRecord>? Users { get; set; }\n''')
+
+          replace_once('PortableDataService.cs',
+          '''internal sealed record CompanyFileSummary(\n    string CompanyName,\n    string LicenseName,\n    int DeviceLimit,\n    bool IsLicensed);\n''',
+          '''internal sealed record CompanyFileSummary(\n    string CompanyName,\n    string LicenseName,\n    int DeviceLimit,\n    bool IsLicensed,\n    string CompanyLogoBase64 = "");\n''')
+
+          # Welcome screen swaps the default InNasc mark for an embedded company logo when available.
+          replace_once('MasterWelcomeControl.cs',
+          '''    private readonly Label _message = new();\n    private readonly TextBox _username = new();\n''',
+          '''    private readonly Label _message = new();\n    private InNascBrandLogo _defaultLogo = null!;\n    private PictureBox _companyLogo = null!;\n    private readonly TextBox _username = new();\n''')
+
+          replace_once('MasterWelcomeControl.cs',
+          '''        var logo = new InNascBrandLogo(124, 112)\n        {\n            Anchor = AnchorStyles.None\n        };\n        heading.Controls.Add(logo, 0, 0);\n''',
+          '''        var logoHost = new Panel\n        {\n            Size = new Size(124, 112),\n            Anchor = AnchorStyles.None,\n            Margin = Padding.Empty,\n            BackColor = Color.Transparent\n        };\n        _defaultLogo = new InNascBrandLogo(124, 112) { Dock = DockStyle.Fill };\n        _companyLogo = new PictureBox\n        {\n            Dock = DockStyle.Fill,\n            BackColor = Color.Transparent,\n            SizeMode = PictureBoxSizeMode.Zoom,\n            Visible = false\n        };\n        _companyLogo.Disposed += (_, _) => _companyLogo.Image?.Dispose();\n        logoHost.Controls.Add(_defaultLogo);\n        logoHost.Controls.Add(_companyLogo);\n        heading.Controls.Add(logoHost, 0, 0);\n''')
+
+          replace_once('MasterWelcomeControl.cs',
+          '''    private void ShowCompanyIdentity(CompanyFileSummary? summary)\n    {\n        if (summary is null || string.IsNullOrWhiteSpace(summary.CompanyName))\n''',
+          '''    private void ShowCompanyIdentity(CompanyFileSummary? summary)\n    {\n        ShowCompanyLogo(summary?.CompanyLogoBase64);\n        if (summary is null || string.IsNullOrWhiteSpace(summary.CompanyName))\n''')
+
+          replace_once('MasterWelcomeControl.cs',
+          '''    public void SelectTarget(SyncTarget target)\n''',
+          '''    private void ShowCompanyLogo(string? logoBase64)\n    {\n        var image = InNascCompanyEnvelopeMetadataService.DecodeLogo(logoBase64);\n        var previous = _companyLogo.Image;\n        _companyLogo.Image = image;\n        _companyLogo.Visible = image is not null;\n        _defaultLogo.Visible = image is null;\n        previous?.Dispose();\n    }\n\n    public void SelectTarget(SyncTarget target)\n''')
+
+          # Preserve branding whenever Global Admin republishes access and keep imported file users until managed company users exist.
+          replace_once('InNascCompanyAccessSyncService.cs',
+          '''        var next = InNascGlobalCoreService.BuildCompanyAccess(\n            company, file, globalSession.GlobalKey, old);\n\n        var allowedUsers = next.Users.Select(user => user.Id).ToHashSet();\n''',
+          '''        var next = InNascGlobalCoreService.BuildCompanyAccess(\n            company, file, globalSession.GlobalKey, old);\n        if (!company.Users.Any(user => user.Enabled && user.CredentialReady) && old.Users.Count > 0)\n            next.Users = old.Users;\n\n        var allowedUsers = next.Users.Select(user => user.Id).ToHashSet();\n''')
+
+          replace_once('InNascCompanyAccessSyncService.cs',
+          '''        PortableDataService.ExportMaster(file.FilePath, data, companySession);\n        _ = globalPath;\n''',
+          '''        PortableDataService.ExportMaster(file.FilePath, data, companySession);\n        InNascCompanyEnvelopeMetadataService.Apply(\n            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit, company.LogoBase64);\n        _ = globalPath;\n''')
+
+          # New licenses inherit any company branding already configured.
+          replace_once('InNascGlobalCoreService.cs',
+          '''        PortableDataService.ExportMaster(file.FilePath, data, CreateCompanyFileSession(session, file));\n    }\n\n    private static bool UpgradeCatalog(\n''',
+          '''        PortableDataService.ExportMaster(file.FilePath, data, CreateCompanyFileSession(session, file));\n        InNascCompanyEnvelopeMetadataService.Apply(\n            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit, company.LogoBase64);\n    }\n\n    private static bool UpgradeCatalog(\n''')
+
+          # Company cards and company detail header show custom branding.
+          replace_once('InNascGlobalAdminForm.cs',
+          '''        var initials = new Label\n        {\n            Text = Initials(company.Name),\n            AutoSize = false,\n            TextAlign = ContentAlignment.MiddleCenter,\n            BackColor = UiTheme.LogoTile,\n            ForeColor = UiTheme.Blue,\n            Font = UiTheme.Font(16, FontStyle.Bold),\n            Location = new Point(18, 18),\n            Size = new Size(64, 64)\n        };\n        card.Controls.Add(initials);\n''',
+          '''        var initials = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(\n            company.Name, company.LogoBase64, 64);\n        initials.Location = new Point(18, 18);\n        card.Controls.Add(initials);\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''        var tile = new Label\n        {\n            Text = string.Concat(_company.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0]))),\n            AutoSize = false,\n            TextAlign = ContentAlignment.MiddleCenter,\n            Font = UiTheme.Font(17, FontStyle.Bold),\n            BackColor = UiTheme.LogoTile,\n            ForeColor = UiTheme.Blue,\n            Location = new Point(0, 4),\n            Size = new Size(66, 66)\n        };\n        panel.Controls.Add(tile);\n        panel.Controls.Add(InNascGlobalSetupForm.TitleLabel(_company.Name, 82, 3, 22, true));\n''',
+          '''        var tile = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(\n            _company.Name, _company.LogoBase64, 66);\n        tile.Name = "CompanyBadge";\n        tile.Location = new Point(0, 4);\n        panel.Controls.Add(tile);\n        var companyTitle = InNascGlobalSetupForm.TitleLabel(_company.Name, 82, 3, 22, true);\n        companyTitle.Name = "CompanyTitle";\n        panel.Controls.Add(companyTitle);\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''        var close = UiTheme.SecondaryButton("Back to companies");\n        close.AutoSize = false;\n        close.Size = new Size(144, 38);\n        close.Anchor = AnchorStyles.Top | AnchorStyles.Right;\n        close.Location = new Point(950, 15);\n        close.DialogResult = DialogResult.OK;\n        panel.Controls.Add(close);\n        panel.Resize += (_, _) => close.Left = panel.ClientSize.Width - close.Width;\n''',
+          '''        var rename = UiTheme.SecondaryButton("Rename company");\n        rename.AutoSize = false;\n        rename.Size = new Size(132, 38);\n        rename.Anchor = AnchorStyles.Top | AnchorStyles.Right;\n        rename.Click += (_, _) => RenameCompany();\n        panel.Controls.Add(rename);\n        var logo = UiTheme.SecondaryButton("Company logo");\n        logo.AutoSize = false;\n        logo.Size = new Size(122, 38);\n        logo.Anchor = AnchorStyles.Top | AnchorStyles.Right;\n        logo.Click += (_, _) => ChangeCompanyLogo();\n        panel.Controls.Add(logo);\n        var close = UiTheme.SecondaryButton("Back to companies");\n        close.AutoSize = false;\n        close.Size = new Size(144, 38);\n        close.Anchor = AnchorStyles.Top | AnchorStyles.Right;\n        close.DialogResult = DialogResult.OK;\n        panel.Controls.Add(close);\n        panel.Resize += (_, _) =>\n        {\n            close.Left = panel.ClientSize.Width - close.Width;\n            logo.Left = close.Left - logo.Width - 10;\n            rename.Left = logo.Left - rename.Width - 10;\n        };\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''        var grant = Button("+ Grant .nasc", 18, GrantFile, true);\n        var limit = Button("Change tier", 144, ChangeLimit);\n        var sync = Button("Sync selected", 264, SyncSelectedFile);\n        var remove = Button("Remove grant", 404, RemoveFile);\n        card.Controls.AddRange([grant, limit, sync, remove]);\n''',
+          '''        var grant = Button("+ Grant .nasc", 18, GrantFile, true);\n        var import = Button("Import .nasc", 144, ImportFile);\n        var limit = Button("Change tier", 282, ChangeLimit);\n        var sync = Button("Sync selected", 420, SyncSelectedFile);\n        var remove = Button("Remove grant", 558, RemoveFile);\n        card.Controls.AddRange([grant, import, limit, sync, remove]);\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''            var file = InNascGlobalCoreService.AddCompanyFile(\n                _globalPath, _catalog, _session, _company.Id,\n                form.FileName, form.CompanyPath, form.DeviceLimit);\n            _status.Text = $"Granted {file.Name} with a {DeviceLimitPolicy.LimitText(file.DeviceLimit)} tier.";\n            RefreshAll(file.Id);\n''',
+          '''            var file = InNascGlobalCoreService.AddCompanyFile(\n                _globalPath, _catalog, _session, _company.Id,\n                form.FileName, form.CompanyPath, form.DeviceLimit);\n            InNascCompanyGlobalAdminService.ApplyToFile(_company, file);\n            RefreshAll(file.Id);\n            _status.Text = $"Granted {file.Name} with a {DeviceLimitPolicy.LimitText(file.DeviceLimit)} tier.";\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''    private void ChangeLimit()\n''',
+          '''    private void ImportFile()\n    {\n        using var dialog = new OpenFileDialog\n        {\n            Title = $"Import existing .nasc into {_company.Name}",\n            Filter = InNascFileTypes.CompanyOpenFilter,\n            CheckFileExists = true,\n            Multiselect = false\n        };\n        if (dialog.ShowDialog(this) != DialogResult.OK) return;\n        try\n        {\n            var bytes = File.ReadAllBytes(dialog.FileName);\n            if (!PortableDataService.IsAccountProtected(bytes))\n                throw new InvalidDataException(\n                    "Import supports account-protected .nasc files. Use Migrate .avmatrix for a legacy company file.");\n            var access = PortableDataService.ReadMasterAccess(bytes);\n            var known = access.LicenseId == Guid.Empty\n                ? null\n                : _catalog.Companies.SelectMany(company => company.Files)\n                    .FirstOrDefault(file => file.Id == access.LicenseId &&\n                        !string.IsNullOrWhiteSpace(file.CompanyKeyBase64));\n            var companyKey = known?.CompanyKeyBase64;\n            if (string.IsNullOrWhiteSpace(companyKey))\n            {\n                if (!access.IsConfigured)\n                    throw new MasterAuthorizationException(\n                        "This .nasc has no company login that can unlock it and is not already known to this Global Admin catalog.");\n                var companySession = MasterSignInForm.Prompt(this, access);\n                if (companySession is null) return;\n                companyKey = companySession.MasterKey;\n            }\n            var file = InNascCompanyGlobalAdminService.ImportExisting(\n                _globalPath, _catalog, _session, _company, dialog.FileName, companyKey!);\n            RefreshAll(file.Id);\n            _status.Text = $"Imported {file.Name}. Existing company logins were preserved; its embedded company name now matches {_company.Name}.";\n        }\n        catch (Exception exception)\n        {\n            _status.Text = exception.Message;\n            MessageBox.Show(this, exception.Message, "Import .nasc", MessageBoxButtons.OK, MessageBoxIcon.Error);\n        }\n    }\n\n    private void RenameCompany()\n    {\n        var name = InputDialog.Show(this, "Rename company", "Company name", _company.Name);\n        if (name is null || string.Equals(name.Trim(), _company.Name, StringComparison.Ordinal)) return;\n        Try("Rename company", () =>\n        {\n            InNascCompanyGlobalAdminService.RenameCompany(\n                _globalPath, _catalog, _session, _company, name);\n            Text = $"{_company.Name} - InNasc Global Admin";\n            var title = Controls.Find("CompanyTitle", true).FirstOrDefault();\n            if (title is not null) title.Text = _company.Name;\n            RefreshCompanyBadge();\n            RefreshAll();\n            _status.Text = $"Updated the embedded company name in {_company.Files.Count(file => file.Enabled):N0} .nasc license(s).";\n        });\n    }\n\n    private void ChangeCompanyLogo()\n    {\n        var choice = MessageBox.Show(this,\n            "Choose Yes to select or replace the company logo.\\r\\nChoose No to remove the embedded company logo.",\n            "Company logo", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);\n        if (choice == DialogResult.Cancel) return;\n        if (choice == DialogResult.No)\n        {\n            Try("Remove company logo", () =>\n            {\n                InNascCompanyGlobalAdminService.SetCompanyLogo(\n                    _globalPath, _catalog, _session, _company, string.Empty);\n                RefreshCompanyBadge();\n                _status.Text = "Removed the embedded company logo. The InNasc logo will be used on the welcome page.";\n            });\n            return;\n        }\n\n        using var dialog = new OpenFileDialog\n        {\n            Title = "Choose company logo",\n            Filter = "Image files (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",\n            CheckFileExists = true\n        };\n        if (dialog.ShowDialog(this) != DialogResult.OK) return;\n        Try("Company logo", () =>\n        {\n            var logoBase64 = InNascCompanyEnvelopeMetadataService.ReadLogoFile(dialog.FileName);\n            InNascCompanyGlobalAdminService.SetCompanyLogo(\n                _globalPath, _catalog, _session, _company, logoBase64);\n            RefreshCompanyBadge();\n            _status.Text = $"Embedded the company logo in {_company.Files.Count(file => file.Enabled):N0} .nasc license(s).";\n        });\n    }\n\n    private void RefreshCompanyBadge()\n    {\n        var existing = Controls.Find("CompanyBadge", true).FirstOrDefault();\n        if (existing?.Parent is not Control parent) return;\n        var location = existing.Location;\n        var index = parent.Controls.GetChildIndex(existing);\n        parent.Controls.Remove(existing);\n        existing.Dispose();\n        var replacement = InNascCompanyEnvelopeMetadataService.CreateCompanyBadge(\n            _company.Name, _company.LogoBase64, 66);\n        replacement.Name = "CompanyBadge";\n        replacement.Location = location;\n        parent.Controls.Add(replacement);\n        parent.Controls.SetChildIndex(replacement, index);\n    }\n\n    private void ChangeLimit()\n''')
+
+          replace_once('InNascGlobalAdminForm.cs',
+          '''            InNascGlobalCoreService.SetDeviceLimit(\n                _globalPath, _catalog, _session, _company.Id, file.Id, form.DeviceLimit);\n            InNascCompanyAccessSyncService.SyncFile(_globalPath, _catalog, _session, _company, file);\n            _status.Text = $"Changed {file.Name} to {DeviceLimitPolicy.LimitText(file.DeviceLimit)}.";\n            RefreshAll(file.Id);\n''',
+          '''            InNascGlobalCoreService.SetDeviceLimit(\n                _globalPath, _catalog, _session, _company.Id, file.Id, form.DeviceLimit);\n            InNascCompanyGlobalAdminService.ApplyToFile(_company, file);\n            RefreshAll(file.Id);\n            _status.Text = $"Changed {file.Name} to {DeviceLimitPolicy.LimitText(file.DeviceLimit)}.";\n''')
+
+          # Add end-to-end smoke coverage for import, rename, tier metadata, logo embedding, and login preservation.
+          replace_once('tests/InNasc.GlobalAdmin.SmokeTests/Program.cs',
+          '''            RunCompanyLicensingAndUserFlow(root);\n            RunLegacyMigrationFlow(root);\n''',
+          '''            RunCompanyLicensingAndUserFlow(root);\n            RunCompanyImportAndBrandingFlow(root);\n            RunLegacyMigrationFlow(root);\n''')
+
+          replace_once('tests/InNasc.GlobalAdmin.SmokeTests/Program.cs',
+          '''    private static ClientRecord CompanyWithDevice(string name)\n''',
+          '''    private static void RunCompanyImportAndBrandingFlow(string root)\n    {\n        var globalPath = Path.Combine(root, "Branding.nascglobal");\n        var global = InNascGlobalCoreService.Create(\n            globalPath, "branding-admin", "Branding Admin", AdminPassword);\n        var targetPath = Path.Combine(root, "Branding-Target.nasc");\n        var company = InNascGlobalCoreService.CreateCompany(\n            globalPath, global.Catalog, global.Session, "Target Company", targetPath, 250);\n\n        var sourcePath = Path.Combine(root, "Imported-Existing.nasc");\n        var access = new MasterAccessControl();\n        _ = MasterAccessService.CreateInitialOwner(\n            access, "existing-owner", "Existing Owner", OwnerPassword);\n        var sourceSession = MasterAccessService.SignIn(access, "existing-owner", OwnerPassword);\n        var sourceData = new AppData\n        {\n            ProjectName = "Old Embedded Name",\n            Clients = [CompanyWithDevice("Imported")],\n            MasterAccess = access\n        };\n        PortableDataService.ExportMaster(sourcePath, sourceData, sourceSession);\n\n        var imported = InNascCompanyGlobalAdminService.ImportExisting(\n            globalPath, global.Catalog, global.Session, company, sourcePath, sourceSession.MasterKey);\n        Require(company.Files.Count == 2 && imported.FilePath == sourcePath,\n            "Existing .nasc file was not imported into the company card.");\n        _ = MasterAccessService.SignIn(PortableDataService.ReadMasterAccess(sourcePath),\n            "existing-owner", OwnerPassword);\n\n        using var logoBitmap = new Bitmap(8, 8);\n        using var logoStream = new MemoryStream();\n        logoBitmap.Save(logoStream, System.Drawing.Imaging.ImageFormat.Png);\n        var logoBase64 = Convert.ToBase64String(logoStream.ToArray());\n        InNascCompanyGlobalAdminService.SetCompanyLogo(\n            globalPath, global.Catalog, global.Session, company, logoBase64);\n        InNascCompanyGlobalAdminService.RenameCompany(\n            globalPath, global.Catalog, global.Session, company, "Branded Company");\n        InNascGlobalCoreService.SetDeviceLimit(\n            globalPath, global.Catalog, global.Session, company.Id, imported.Id, 500);\n        InNascCompanyGlobalAdminService.ApplyToFile(company, imported);\n\n        var summary = PortableDataService.ReadCompanySummary(sourcePath);\n        Require(summary.CompanyName == "Branded Company" && summary.DeviceLimit == 500 &&\n                summary.CompanyLogoBase64 == logoBase64,\n            "Embedded company name, tier, or logo did not update.");\n        Require(InNascCompanyEnvelopeMetadataService.DecodeLogo(summary.CompanyLogoBase64) is not null,\n            "Embedded company logo could not be decoded for the welcome page.");\n        var reopened = PortableDataService.Import(sourcePath, sourceSession.MasterKey).Data;\n        Require(reopened.ProjectName == "Branded Company" && reopened.MasterAccess.DeviceLimit == 500,\n            "Editable envelope metadata was not applied when opening the imported company.");\n        _ = MasterAccessService.SignIn(PortableDataService.ReadMasterAccess(sourcePath),\n            "existing-owner", OwnerPassword);\n    }\n\n    private static ClientRecord CompanyWithDevice(string name)\n''')
+
+          # The temporary patch workflow removes itself in the generated feature commit.
+          Path('.github/workflows/apply-company-branding-import.yml').unlink()
+          '@ | Set-Content -Encoding UTF8 .patch_company_branding.py
+          python .patch_company_branding.py
+          Remove-Item .patch_company_branding.py
+
+      - name: Run Global Admin smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.GlobalAdmin.SmokeTests\InNasc.GlobalAdmin.SmokeTests.csproj --configuration Release
+
+      - name: Run user app smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
+
+      - name: Build both Windows applications
+        shell: pwsh
+        run: |
+          dotnet build InNasc.csproj --configuration Release
+          dotnet build InNasc.GlobalAdmin.csproj --configuration Release
+
+      - name: Commit tested feature
+        shell: pwsh
+        run: |
+          git config user.name "IamN8Wright"
+          git config user.email "iamn8wright@gmail.com"
+          git add -A
+          git commit -m "Add Global Admin company import and branding"
+          git push origin HEAD:agent/innasc-company-tiers
