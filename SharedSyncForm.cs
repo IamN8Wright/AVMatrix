@@ -12,21 +12,18 @@ internal sealed class SharedSyncForm : Form
     private readonly Button _push = UiTheme.PrimaryButton("Merge & push");
     private readonly Button _unlink = UiTheme.DangerButton("Unlink");
     private readonly Button _signIn = UiTheme.SecondaryButton("Sign in");
-    private readonly Button _accounts = UiTheme.SecondaryButton("Accounts");
     private readonly Button _checkout = UiTheme.PrimaryButton("Check out client…");
     private readonly Button _checkIn = UiTheme.PrimaryButton("Check in & push");
     private readonly Button _releaseCheckout = UiTheme.DangerButton("Release checkout");
     private string? _masterPassword;
     private MasterSession? _masterSession;
-    private readonly bool _openAccountsOnShown;
 
     public bool DataPulled { get; private set; }
 
-    public SharedSyncForm(AppData data, DataStore store, bool openAccountsOnShown = false)
+    public SharedSyncForm(AppData data, DataStore store)
     {
         _data = data;
         _store = store;
-        _openAccountsOnShown = openAccountsOnShown;
         _masterSession = MasterSessionContext.Get(
             SyncTarget.SharedFile,
             _data.Settings.SharedMasterPath);
@@ -62,8 +59,6 @@ internal sealed class SharedSyncForm : Form
         Controls.Add(shell);
         UiTheme.ApplyTheme(this);
         RefreshMasterState();
-        if (_openAccountsOnShown)
-            Shown += (_, _) => BeginInvoke((Action)ManageAccounts);
     }
 
     private Control BuildHeading()
@@ -98,7 +93,7 @@ internal sealed class SharedSyncForm : Form
         };
         panel.Controls.Add(new Label
         {
-            Text = "MASTER FILE",
+            Text = "COMPANY FILE",
             AutoSize = true,
             Font = UiTheme.Font(8, FontStyle.Bold),
             ForeColor = UiTheme.Muted,
@@ -118,24 +113,17 @@ internal sealed class SharedSyncForm : Form
         link.Click += (_, _) => LinkExisting();
         panel.Controls.Add(link);
 
-        var create = UiTheme.SecondaryButton("Create new company file…");
-        create.AutoSize = false;
-        create.Size = new Size(154, 34);
-        create.Location = new Point(154, 82);
-        create.Click += (_, _) => CreateMaster();
-        panel.Controls.Add(create);
-
         var refresh = UiTheme.SecondaryButton("Refresh status");
         refresh.AutoSize = false;
         refresh.Size = new Size(116, 34);
-        refresh.Location = new Point(318, 82);
+        refresh.Location = new Point(154, 82);
         refresh.Click += (_, _) => RefreshMasterState();
         panel.Controls.Add(refresh);
 
         var google = UiTheme.SecondaryButton("Google Drive online…");
         google.AutoSize = false;
         google.Size = new Size(164, 34);
-        google.Location = new Point(444, 82);
+        google.Location = new Point(280, 82);
         google.Click += (_, _) => OpenGoogleDriveOnline();
         panel.Controls.Add(google);
         return panel;
@@ -181,7 +169,7 @@ internal sealed class SharedSyncForm : Form
         var panel = new Panel { Dock = DockStyle.Fill };
         panel.Controls.Add(new Label
         {
-            Text = "MASTER ACCESS & CLIENT CHECKOUT",
+            Text = "COMPANY SESSION & CLIENT CHECKOUT",
             AutoSize = true,
             Font = UiTheme.Font(8, FontStyle.Bold),
             ForeColor = UiTheme.Muted,
@@ -195,22 +183,20 @@ internal sealed class SharedSyncForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
         };
-        foreach (var button in new[] { _signIn, _accounts, _checkout, _checkIn, _releaseCheckout })
+        foreach (var button in new[] { _signIn, _checkout, _checkIn, _releaseCheckout })
         {
             button.AutoSize = false;
             button.Height = 36;
         }
         _signIn.Width = 94;
-        _accounts.Width = 94;
         _checkout.Width = 142;
         _checkIn.Width = 132;
         _releaseCheckout.Width = 142;
         _signIn.Click += (_, _) => SignInToMaster();
-        _accounts.Click += (_, _) => ManageAccounts();
         _checkout.Click += (_, _) => CheckoutClient();
         _checkIn.Click += (_, _) => CheckInClient();
         _releaseCheckout.Click += (_, _) => ReleaseCheckout();
-        masterActions.Controls.AddRange([_signIn, _accounts, _checkout, _checkIn, _releaseCheckout]);
+        masterActions.Controls.AddRange([_signIn, _checkout, _checkIn, _releaseCheckout]);
         _signIn.Visible = false;
         _checkout.Visible = false;
         panel.Controls.Add(masterActions);
@@ -301,54 +287,6 @@ internal sealed class SharedSyncForm : Form
         catch (Exception exception)
         {
             ShowError("The master file could not be linked.", exception);
-        }
-    }
-
-    private void CreateMaster()
-    {
-        if (MasterSessionContext.Current is not null)
-        {
-            MessageBox.Show(this,
-                "Log out first, then use Create new Master File on the welcome screen.",
-                "Create company workspace",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-        using var dialog = new SaveFileDialog
-        {
-            Title = "Create an InNasc shared company file",
-            Filter = "InNasc master (*.nasc)|*.nasc",
-            DefaultExt = "nasc",
-            AddExtension = true,
-            FileName = "InNasc-Company.nasc"
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var owner = MasterOwnerSetupForm.Prompt(this);
-        if (owner is null) return;
-        try
-        {
-            MasterSessionContext.Clear(SyncTarget.SharedFile, _data.Settings.SharedMasterPath);
-            _masterPassword = owner.Session.MasterKey;
-            _data.MasterAccess = owner.Access;
-            _masterSession = owner.Session;
-            var result = SharedSyncService.CreateMaster(
-                dialog.FileName, _data, _store, owner.Session);
-            RememberMasterSession(showNotification: true);
-            RefreshMasterState();
-            MessageBox.Show(this,
-                $"Created the shared company file with {result.ClientCount:N0} client(s) and " +
-                $"{result.EquipmentCount:N0} equipment record(s).\r\n\r\n" +
-                "This master is encrypted and unlocked by its user accounts.\r\n\r\n" +
-                "Have each collaborator link to this same file and pull once to establish a merge baseline. " +
-                "After that, Merge & push combines independent work automatically.",
-                "Company file created",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
-        catch (Exception exception)
-        {
-            ShowError("The shared company file could not be created.", exception);
         }
     }
 
@@ -553,38 +491,6 @@ internal sealed class SharedSyncForm : Form
         return _masterSession;
     }
 
-    private void ManageAccounts()
-    {
-        try
-        {
-            var password = RequestPasswordIfNeeded(_data.Settings.SharedMasterPath);
-            if (PortableDataService.IsPasswordProtected(_data.Settings.SharedMasterPath) && password is null) return;
-            var snapshot = SharedSyncService.Inspect(_data.Settings.SharedMasterPath, password);
-            var session = EnsureSession(snapshot.Contents.Data.MasterAccess, password);
-            if (session is null) return;
-            using var accounts = new MasterUserManagementForm(
-                snapshot.Contents.Data.MasterAccess,
-                session,
-                snapshot.Contents.Data.Clients);
-            if (accounts.ShowDialog(this) != DialogResult.OK) return;
-            SharedSyncService.SaveAccessControl(
-                _data,
-                _store,
-                accounts.ResultAccess,
-                session,
-                initialSetup: false,
-                password);
-            _masterSession = MasterAccessService.RefreshSession(
-                accounts.ResultAccess, session);
-            RememberMasterSession(showNotification: false);
-            RefreshMasterState();
-        }
-        catch (Exception exception)
-        {
-            ShowError("The master accounts could not be updated.", exception);
-        }
-    }
-
     private void CheckoutClient()
     {
         try
@@ -715,8 +621,6 @@ internal sealed class SharedSyncForm : Form
         _push.Enabled = linked && !checkoutActive;
         _unlink.Enabled = linked;
         _signIn.Enabled = linked;
-        _accounts.Enabled = linked;
-        _accounts.Visible = _masterSession is not null;
         _checkout.Enabled = linked && !checkoutActive && (_masterSession?.CanWrite ?? true);
         _checkIn.Enabled = linked && checkoutActive;
         _releaseCheckout.Enabled = linked && checkoutActive;

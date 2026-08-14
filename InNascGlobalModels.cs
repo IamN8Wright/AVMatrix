@@ -20,6 +20,10 @@ internal sealed class InNascGlobalAccessRecord
     public string GlobalKeyNonceBase64 { get; set; } = string.Empty;
     public string GlobalKeyCiphertextBase64 { get; set; } = string.Empty;
     public string GlobalKeyTagBase64 { get; set; } = string.Empty;
+    public string CompanyKeySaltBase64 { get; set; } = string.Empty;
+    public string CompanyKeyCredentialNonceBase64 { get; set; } = string.Empty;
+    public string CompanyKeyCredentialCiphertextBase64 { get; set; } = string.Empty;
+    public string CompanyKeyCredentialTagBase64 { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -69,30 +73,7 @@ internal sealed record InNascGlobalSession(
     bool IsGlobalAdmin,
     string GlobalKey);
 
-internal sealed record InNascCompanySelection(
-    InNascGlobalSession GlobalSession,
-    InNascCompanyRecord Company,
-    MasterSession CompanySession);
-
-internal static class InNascGlobalSessionContext
-{
-    public static InNascGlobalSession? Current { get; private set; }
-    public static string CatalogPath { get; private set; } = string.Empty;
-    public static Guid? CompanyId { get; private set; }
-
-    public static void Set(InNascGlobalSession session, string catalogPath, Guid? companyId = null)
-    {
-        Current = session;
-        CatalogPath = catalogPath;
-        CompanyId = companyId;
-    }
-
-    public static void SelectCompany(Guid companyId) => CompanyId = companyId;
-
-    public static void Clear()
-    {
-        Current = null;
-        CatalogPath = string.Empty;
-        CompanyId = null;
-    }
-}
+internal sealed record InNascGlobalAdminSelection(
+    string GlobalPath,
+    InNascGlobalSession Session,
+    InNascGlobalCatalog Catalog);

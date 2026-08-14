@@ -16,25 +16,6 @@ internal static class Program
         {
             var data = store.Load();
             UiTheme.SetDarkMode(data.Settings.DarkMode);
-            using (var startup = new InNascStartupForm())
-            {
-                if (startup.ShowDialog() != DialogResult.OK || startup.Selection is null)
-                    return;
-                try
-                {
-                    InNascCompanyOpenService.Open(data, store, startup.Selection);
-                }
-                catch (Exception exception)
-                {
-                    MessageBox.Show(
-                        $"The selected company could not be opened.\r\n\r\n{exception.Message}",
-                        "Open InNasc company",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                    continue;
-                }
-            }
-
             using var mainForm = new MainForm(data, store);
             var signOutRequested = false;
             mainForm.SignOutRequested += (_, _) => signOutRequested = true;

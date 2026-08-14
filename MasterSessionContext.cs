@@ -21,11 +21,7 @@ internal static class MasterSessionContext
             string.Equals(_current.MasterKey, normalizedKey, StringComparison.OrdinalIgnoreCase))
             return _current.Session;
 
-        var global = InNascGlobalSessionContext.Current;
         if (_current is not null &&
-            global is not null &&
-            InNascGlobalSessionContext.CompanyId.HasValue &&
-            _current.Session.UserId == global.UserId &&
             target == SyncTarget.GoogleDrive &&
             _current.Target == SyncTarget.SharedFile)
             return _current.Session;
@@ -35,14 +31,10 @@ internal static class MasterSessionContext
 
     public static void Set(SyncTarget target, string masterKey, MasterSession session)
     {
-        var global = InNascGlobalSessionContext.Current;
         if (_current is not null &&
-            global is not null &&
-            InNascGlobalSessionContext.CompanyId.HasValue &&
             _current.Target == SyncTarget.SharedFile &&
             target == SyncTarget.GoogleDrive &&
-            _current.Session.UserId == global.UserId &&
-            session.UserId == global.UserId)
+            _current.Session.UserId == session.UserId)
             return;
 
         _current = new ActiveMasterSession(target, NormalizeKey(target, masterKey), session);

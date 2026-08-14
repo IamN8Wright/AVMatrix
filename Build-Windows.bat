@@ -49,8 +49,32 @@ if errorlevel 1 (
 )
 
 echo.
+echo Building InNasc Global Admin for 64-bit Windows...
+echo.
+
+dotnet publish InNasc.GlobalAdmin.csproj ^
+  --configuration Release ^
+  --runtime win-x64 ^
+  --self-contained true ^
+  --output "publish\global-admin\win-x64" ^
+  -p:PublishSingleFile=true ^
+  -p:IncludeNativeLibrariesForSelfExtract=true ^
+  -p:EnableCompressionInSingleFile=true ^
+  -p:DebugType=None ^
+  -p:DebugSymbols=false
+
+if errorlevel 1 (
+  echo.
+  echo Global Admin build failed. Review the message above for details.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
 echo Build complete:
 echo %~dp0publish\win-x64\InNasc.exe
+echo %~dp0publish\global-admin\win-x64\InNasc.GlobalAdmin.exe
 echo.
 explorer "%~dp0publish\win-x64"
 pause
