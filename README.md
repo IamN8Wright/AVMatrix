@@ -1,42 +1,35 @@
 # InNasc
 
-InNasc is a native Windows application by InN8 Labs for understanding connected systems in context. It organizes companies, users, clients, locations, rooms, equipment, network interfaces, credentials, configuration files, checkout state, and synchronization in one workspace.
+InNasc is a native Windows application by InN8 Labs for understanding connected systems in context. It organizes companies, users, clients, locations, rooms, equipment, network interfaces, credentials, configuration files, checkout state, and synchronization.
 
 Website: [InNasc.com](https://InNasc.com)
 
-## InNasc 5.0 architecture
+## InNasc 5.1 two-application architecture
 
-- `.nascglobal` is the encrypted Global Admin catalog. It contains global users, company records, and user-to-company memberships.
-- `.nasc` is the encrypted company database format.
-- `.nascclient` stores optional client payloads and configuration-file contents alongside the company database.
-- Global users sign in with a username and password, choose an assigned company, and receive the role configured for that company.
-- Global Admins create companies and users, assign users to companies, reset passwords, and synchronize access into company files.
-- Passwords are stored as salted PBKDF2 verifiers. Each password also derives a key that unwraps the encrypted Global catalog key; readable passwords are never stored.
+InNasc now ships as two separate Windows programs:
+
+- **InNasc Global Admin** (`InNasc.GlobalAdmin.exe`) is the administrative authority. It creates the encrypted `.nascglobal` catalog, generates a separate `.nasc` file for each company, manages users and memberships, publishes direct company credentials, resets passwords, and migrates legacy `.avmatrix` companies.
+- **InNasc** (`InNasc.exe`) is the user application. Users choose their company's `.nasc` file, sign in directly with the credentials published by Global Admin, and populate or maintain the company workspace according to their Owner, Tech, or Read-only role.
+
+The user application does not create company files or administer user accounts. Those responsibilities remain isolated in Global Admin.
+
+### File types
+
+- `.nascglobal` is the encrypted Global Admin catalog. Only `InNasc.GlobalAdmin.exe` opens it.
+- `.nasc` is the encrypted company database and contains the company-local login envelope published by Global Admin.
+- `.nascclient` stores optional client payloads and configuration-file contents beside the company database.
+
+Passwords remain non-recoverable. Global Admin stores salted PBKDF2 verifiers and encrypted credential material that lets it publish a user into assigned company files without storing plaintext passwords. Existing 5.0.x accounts require one password reset in Global Admin before their direct company login can be published.
 
 ## Legacy compatibility
 
-InNasc keeps AV Matrix data usable during the 5.0 migration:
-
-- Existing `.avmatrix` files remain readable.
-- Global Admin includes **Migrate .avmatrix…**, which creates a new `.nasc` company while leaving the source untouched.
-- Unprotected, password-protected, and account-protected legacy files are supported.
-- Associated `.avclient` payloads migrate to `.nascclient`.
-- Legacy local application data and stored integration credentials are discovered and migrated to their InNasc locations.
-
-New data is always written with the InNasc extensions and identity.
-
-## Branding
-
-- Light and Dark InNasc app marks switch with the application theme.
-- The Light app icon is used for the Windows executable and app tile.
-- Primary Horizontal artwork appears on About.
-- The app product, assembly, updater, executable, checksum, and CI artifact are named InNasc.
+Global Admin includes **Migrate .avmatrix…**, which creates a new `.nasc` company while leaving the source untouched. Unprotected, password-protected, and account-protected legacy files are supported, and associated `.avclient` payloads migrate to `.nascclient`.
 
 ## Windows build
 
 Requirements: Windows and the .NET 8 SDK.
 
-Run `Build-Windows.bat`, or publish directly:
+Run `Build-Windows.bat`, or publish each program directly:
 
 ```powershell
 dotnet publish InNasc.csproj `
@@ -47,28 +40,32 @@ dotnet publish InNasc.csproj `
   -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:EnableCompressionInSingleFile=true
+
+dotnet publish InNasc.GlobalAdmin.csproj `
+  --configuration Release `
+  --runtime win-x64 `
+  --self-contained true `
+  --output publish\global-admin\win-x64 `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true
 ```
 
-The installable test executable is `publish\win-x64\InNasc.exe`.
+Outputs:
+
+- `publish\win-x64\InNasc.exe`
+- `publish\global-admin\win-x64\InNasc.GlobalAdmin.exe`
 
 ## Validation
 
-The repository includes a dependency-free Windows smoke suite covering:
-
-- Global catalog creation and login
-- Invalid-password rejection
-- Company creation and selection
-- User membership and role enforcement
-- Password reset
-- Company-access synchronization
-- Legacy `.avmatrix` and `.avclient` migration
-- Preservation of the original legacy files
-
-Run it with:
+The dependency-free smoke suites verify both sides of the boundary:
 
 ```powershell
 dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
+dotnet run --project tests\InNasc.GlobalAdmin.SmokeTests\InNasc.GlobalAdmin.SmokeTests.csproj --configuration Release
 ```
+
+Coverage includes direct `.nasc` login, invalid-password rejection, company generation, user and role publishing, password-reset propagation, legacy `.avmatrix`/`.avclient` migration, source preservation, and embedded branding.
 
 ## Local data and security
 

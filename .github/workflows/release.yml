@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - agent/innasc-major-update
+      - agent/innasc-global-admin-split
     tags:
       - 'v*'
   pull_request:
@@ -54,9 +55,13 @@ jobs:
         shell: pwsh
         run: .\Restore-BrandAssets.ps1
 
-      - name: Run migration and authentication smoke tests
+      - name: Run InNasc user application smoke tests
         shell: pwsh
         run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
+
+      - name: Run Global Admin publishing and migration smoke tests
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.GlobalAdmin.SmokeTests\InNasc.GlobalAdmin.SmokeTests.csproj --configuration Release
 
       - name: Build Windows release
         shell: pwsh
@@ -66,6 +71,20 @@ jobs:
             --runtime win-x64 `
             --self-contained true `
             --output 'publish\win-x64' `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Build Global Admin Windows release
+        shell: pwsh
+        run: |
+          dotnet publish InNasc.GlobalAdmin.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output 'publish\global-admin\win-x64' `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
@@ -84,12 +103,27 @@ jobs:
             throw "Unexpected executable product name: $product"
           }
 
+      - name: Verify Global Admin executable
+        shell: pwsh
+        run: |
+          $exe = 'publish\global-admin\win-x64\InNasc.GlobalAdmin.exe'
+          if (-not (Test-Path $exe)) {
+            throw "Expected Global Admin asset not found: $exe"
+          }
+          $product = (Get-Item $exe).VersionInfo.ProductName
+          if ($product -ne 'InNasc Global Admin') {
+            throw "Unexpected Global Admin product name: $product"
+          }
+
       - name: Create SHA-256 checksum
         shell: pwsh
         run: |
           $exe = 'publish\win-x64\InNasc.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  InNasc.exe" | Set-Content -NoNewline 'publish\win-x64\InNasc.exe.sha256'
+          $adminExe = 'publish\global-admin\win-x64\InNasc.GlobalAdmin.exe'
+          $adminHash = (Get-FileHash $adminExe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$adminHash  InNasc.GlobalAdmin.exe" | Set-Content -NoNewline 'publish\global-admin\win-x64\InNasc.GlobalAdmin.exe.sha256'
 
       - name: Upload testable Windows artifact
         uses: actions/upload-artifact@v4
@@ -98,6 +132,8 @@ jobs:
           path: |
             publish/win-x64/InNasc.exe
             publish/win-x64/InNasc.exe.sha256
+            publish/global-admin/win-x64/InNasc.GlobalAdmin.exe
+            publish/global-admin/win-x64/InNasc.GlobalAdmin.exe.sha256
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release InNasc '))
@@ -112,11 +148,13 @@ jobs:
           }
           $exe = 'publish\win-x64\InNasc.exe'
           $checksum = 'publish\win-x64\InNasc.exe.sha256'
+          $adminExe = 'publish\global-admin\win-x64\InNasc.GlobalAdmin.exe'
+          $adminChecksum = 'publish\global-admin\win-x64\InNasc.GlobalAdmin.exe.sha256'
           gh release view $tag --repo '${{ github.repository }}' *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $exe $checksum --clobber --repo '${{ github.repository }}'
+            gh release upload $tag $exe $checksum $adminExe $adminChecksum --clobber --repo '${{ github.repository }}'
           } else {
-            gh release create $tag $exe $checksum `
+            gh release create $tag $exe $checksum $adminExe $adminChecksum `
               --repo '${{ github.repository }}' `
               --target '${{ github.sha }}' `
               --title "InNasc $tag" `

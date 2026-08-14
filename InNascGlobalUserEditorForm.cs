@@ -32,7 +32,7 @@ internal sealed class InNascGlobalUserEditorForm : Form
 
         Controls.Add(InNascGlobalSetupForm.TitleLabel("Add user", 28, 22, 18, true));
         Controls.Add(InNascGlobalSetupForm.Description(
-            "Create the login and assign company access now. Passwords cannot be viewed later; a Global Admin can only reset them.",
+            "Create the login and assign company access now. Global Admin publishes this password securely into each assigned .nasc file.",
             30, 58, 748, 48));
 
         AddField("Username", _username, 118);

@@ -15,7 +15,6 @@ internal sealed class GoogleDriveSyncForm : Form
   private readonly Button _pull = UiTheme.SecondaryButton("Pull from Google Drive");
   private readonly Button _push = UiTheme.PrimaryButton("Merge & push to Google Drive");
   private readonly Button _masterSignIn = UiTheme.SecondaryButton("Master sign in");
-  private readonly Button _accounts = UiTheme.SecondaryButton("Accounts");
   private readonly Button _checkout = UiTheme.PrimaryButton("Check out client…");
   private readonly Button _checkIn = UiTheme.PrimaryButton("Check in & push");
   private readonly Button _releaseCheckout = UiTheme.DangerButton("Release");
@@ -26,18 +25,15 @@ internal sealed class GoogleDriveSyncForm : Form
   private MasterSession? _masterSession;
   private MasterSession? _legacyDriveSession;
   private readonly MasterSession? _companySession;
-  private readonly bool _openAccountsOnShown;
   private readonly bool _connectionOnly;
   public bool DataPulled { get; private set; }
   public GoogleDriveSyncForm(
     AppData data,
     DataStore store,
-    bool openAccountsOnShown = false,
     bool connectionOnly = false)
   {
     _data = data;
     _store = store;
-    _openAccountsOnShown = openAccountsOnShown;
     _connectionOnly = connectionOnly;
     _companySession = MasterSessionContext.Get(
       SyncTarget.GoogleDrive,
@@ -80,7 +76,6 @@ internal sealed class GoogleDriveSyncForm : Form
       if (!_connectionOnly && GoogleDriveService.HasGoogleSignIn &&
         !string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId))
         await RefreshRemoteAsync(promptForPassword: false);
-      if (_openAccountsOnShown) await ManageAccountsAsync();
     };
   }
   private Control BuildHeading()
@@ -200,7 +195,7 @@ internal sealed class GoogleDriveSyncForm : Form
     var panel = new Panel { Dock = DockStyle.Fill };
     panel.Controls.Add(new Label
     {
-      Text = "MASTER ACCESS & CLIENT CHECKOUT",
+      Text = "COMPANY SESSION & CLIENT CHECKOUT",
       AutoSize = true,
       Font = UiTheme.Font(8, FontStyle.Bold),
       ForeColor = UiTheme.Muted,
@@ -215,23 +210,21 @@ internal sealed class GoogleDriveSyncForm : Form
       WrapContents = false
     };
     foreach (var button in new[]
-         { _masterSignIn, _accounts, _checkout, _checkIn, _releaseCheckout })
+         { _masterSignIn, _checkout, _checkIn, _releaseCheckout })
     {
       button.AutoSize = false;
       button.Height = 34;
     }
     _masterSignIn.Width = 116;
-    _accounts.Width = 92;
     _checkout.Width = 142;
     _checkIn.Width = 132;
     _releaseCheckout.Width = 86;
     _masterSignIn.Click += async (_, _) => await SignInToMasterAsync();
-    _accounts.Click += async (_, _) => await ManageAccountsAsync();
     _checkout.Click += async (_, _) => await CheckoutClientAsync();
     _checkIn.Click += async (_, _) => await CheckInClientAsync();
     _releaseCheckout.Click += async (_, _) => await ReleaseCheckoutAsync();
     masterActions.Controls.AddRange(
-      [_masterSignIn, _accounts, _checkout, _checkIn, _releaseCheckout]);
+      [_masterSignIn, _checkout, _checkIn, _releaseCheckout]);
     _masterSignIn.Visible = false;
     _checkout.Visible = false;
     panel.Controls.Add(masterActions);
@@ -364,7 +357,7 @@ internal sealed class GoogleDriveSyncForm : Form
     if (_busy) return;
     if (!_connectionOnly &&
       MasterSessionContext.Current is not null &&
-      InNascGlobalSessionContext.Current is null)
+      _companySession is null)
     {
       MessageBox.Show(this,
         "Log out first, then connect the other Google Drive Master from the welcome screen.",
@@ -615,9 +608,9 @@ internal sealed class GoogleDriveSyncForm : Form
   {
     var session = _companySession ??
       MasterSessionContext.Get(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
-    if (session is null || InNascGlobalSessionContext.Current is null)
+    if (session is null)
       throw new MasterAuthorizationException(
-        "Open this company through your InNasc Global login before migrating its legacy Google Drive master.");
+        "Open and sign in to the company .nasc file before migrating its legacy Google Drive master.");
     return session;
   }
   private async Task<GoogleDriveSnapshot> MigrateLegacyDriveAsync(
@@ -628,7 +621,7 @@ internal sealed class GoogleDriveSyncForm : Form
       throw new InvalidOperationException("The legacy AV Matrix session is no longer available.");
     if (!companySession.IsOwner)
       throw new MasterAuthorizationException(
-        "A company Owner or Global Admin must migrate legacy Google Drive protection.");
+        "A company Owner must migrate legacy Google Drive protection.");
     var accessForCompany = MasterAccessService.Clone(_data.MasterAccess);
     accessForCompany.MasterId = legacySnapshot.Contents.Data.MasterAccess.MasterId;
     accessForCompany.Checkouts = [];
@@ -720,12 +713,12 @@ internal sealed class GoogleDriveSyncForm : Form
       }
       catch (MasterAuthorizationException)
       {
-        if (InNascGlobalSessionContext.Current is null)
+        if (_companySession is null)
           MasterSessionContext.Clear(SyncTarget.GoogleDrive, _data.Settings.GoogleDriveFileId);
         _masterSession = _companySession;
       }
     }
-    if (InNascGlobalSessionContext.Current is not null && _companySession is not null)
+    if (_companySession is not null)
     {
       _masterSession = MasterAccessService.RefreshSession(access, _companySession);
       return _masterSession;
@@ -754,41 +747,6 @@ internal sealed class GoogleDriveSyncForm : Form
       }
       await EnsureMasterSessionAsync(snapshot, forcePrompt: true);
     }, "The company workspace sign-in could not be completed.");
-  }
-  private async Task ManageAccountsAsync()
-  {
-    if (_busy) return;
-    await RunBusyAsync(async () =>
-    {
-      var snapshot = await InspectWithPasswordAsync(prompt: true);
-      if (snapshot is null) return;
-      if (_legacyDriveSession is not null)
-      {
-        MessageBox.Show(this,
-          "Migrate this legacy Drive company with Pull or Merge & push before managing its accounts.",
-          "Legacy migration required",
-          MessageBoxButtons.OK,
-          MessageBoxIcon.Information);
-        return;
-      }
-      var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
-      if (session is null) return;
-      using var accounts = new MasterUserManagementForm(
-        snapshot.Contents.Data.MasterAccess,
-        session,
-        snapshot.Contents.Data.Clients);
-      if (accounts.ShowDialog(this) != DialogResult.OK) return;
-      await GoogleDriveSyncService.SaveAccessControlAsync(
-        _data,
-        _store,
-        accounts.ResultAccess,
-        session,
-        initialSetup: false,
-        _operationPassword ?? _filePassword);
-      _masterSession = MasterAccessService.RefreshSession(
-        accounts.ResultAccess, session);
-      RememberMasterSession(showNotification: false);
-    }, "The master accounts could not be updated.");
   }
   private async Task CheckoutClientAsync()
   {
@@ -999,8 +957,6 @@ internal sealed class GoogleDriveSyncForm : Form
     _protection.Enabled = false;
     _protection.Visible = false;
     _masterSignIn.Enabled = signedIn && linked && !_busy;
-    _accounts.Enabled = signedIn && linked && !_busy;
-    _accounts.Visible = _masterSession is not null && !_connectionOnly;
     _checkout.Enabled = false;
     _checkIn.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
     _releaseCheckout.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
@@ -1010,7 +966,6 @@ internal sealed class GoogleDriveSyncForm : Form
       _pull.Enabled = false;
       _push.Enabled = false;
       _masterSignIn.Visible = false;
-      _accounts.Visible = false;
       _checkIn.Visible = false;
       _releaseCheckout.Visible = false;
     }
@@ -1105,7 +1060,7 @@ internal sealed class GoogleDriveSyncForm : Form
   private void RememberMasterSession(bool showNotification)
   {
     if (_masterSession is null || string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId)) return;
-    if (InNascGlobalSessionContext.Current is null)
+    if (_companySession is null)
       MasterSessionContext.Set(
         SyncTarget.GoogleDrive,
         _data.Settings.GoogleDriveFileId,

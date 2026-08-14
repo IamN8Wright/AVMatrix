@@ -43,7 +43,7 @@ internal sealed class InNascGlobalAdminForm : Form
         var header = new Panel { Dock = DockStyle.Fill };
         header.Controls.Add(InNascGlobalSetupForm.TitleLabel("Global Admin", 0, 0, 20, true));
         header.Controls.Add(InNascGlobalSetupForm.Description(
-            "Companies are .nasc files. Users sign in once, then choose from the companies assigned to them.",
+            "This application generates company .nasc files and publishes each assigned user's direct company login.",
             2, 40, 820, 30));
         shell.Controls.Add(header, 0, 0);
         shell.SetColumnSpan(header, 2);
@@ -135,6 +135,7 @@ internal sealed class InNascGlobalAdminForm : Form
         _users.Columns.Add("User", 150);
         _users.Columns.Add("Role", 100);
         _users.Columns.Add("Companies", 90);
+        _users.Columns.Add("Company login", 110);
         panel.Controls.Add(_users);
         panel.Resize += (_, _) => _users.Size = new Size(panel.ClientSize.Width - 14, panel.ClientSize.Height - 92);
         return panel;
@@ -218,6 +219,8 @@ internal sealed class InNascGlobalAdminForm : Form
             var item = new ListViewItem(user.DisplayName);
             item.SubItems.Add(user.IsGlobalAdmin ? "Global Admin" : "User");
             item.SubItems.Add(companies);
+            item.SubItems.Add(InNascGlobalCoreService.HasCompanyCredential(
+                _globalPath, user.Id) ? "Ready" : "Reset needed");
             item.Tag = user.Id;
             _users.Items.Add(item);
             if (selectId == user.Id) item.Selected = true;
@@ -269,7 +272,7 @@ internal sealed class InNascGlobalAdminForm : Form
                 InNascGlobalCoreService.Save(_globalPath, _catalog, _session);
             }
 
-            InNascCompanyAccessSyncService.SyncAll(_catalog, _session);
+            InNascCompanyAccessSyncService.SyncAll(_globalPath, _catalog, _session);
             var companyCount = form.IsGlobalAdmin
                 ? "all companies"
                 : $"{user.Companies.Count} compan{(user.Companies.Count == 1 ? "y" : "ies")}";
@@ -353,7 +356,7 @@ internal sealed class InNascGlobalAdminForm : Form
                 InNascGlobalCoreService.SetMembership(
                     _globalPath, _catalog, _session,
                     user.Id, choice.CompanyId, choice.Assigned, choice.Role);
-            InNascCompanyAccessSyncService.SyncAll(_catalog, _session);
+            InNascCompanyAccessSyncService.SyncAll(_globalPath, _catalog, _session);
             _status.Text = $"Updated company access for {user.DisplayName}.";
             RefreshAll();
         }
@@ -370,7 +373,9 @@ internal sealed class InNascGlobalAdminForm : Form
         {
             InNascGlobalCoreService.ResetPassword(
                 _globalPath, _catalog, _session, user.Id, form.Password);
-            _status.Text = $"Password reset for {user.DisplayName}. The previous password remains unrecoverable.";
+            InNascCompanyAccessSyncService.SyncAll(_globalPath, _catalog, _session);
+            _status.Text = $"Password reset and republished to all assigned companies for {user.DisplayName}.";
+            RefreshUsers(user.Id);
         }
         catch (Exception exception) { ShowError("Reset password", exception); }
     }
@@ -379,7 +384,8 @@ internal sealed class InNascGlobalAdminForm : Form
     {
         try
         {
-            InNascCompanyAccessSyncService.SyncCompany(_catalog, _session, company);
+            InNascCompanyAccessSyncService.SyncCompany(
+                _globalPath, _catalog, _session, company);
             _status.Text = $"Synced company access into {company.Name}.";
         }
         catch (Exception exception) { ShowError("Sync company", exception); }

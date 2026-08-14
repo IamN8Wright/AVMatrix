@@ -8,6 +8,8 @@ internal static class InNascFileTypes
 
     public const string CompanyFilter =
         "InNasc company files (*.nasc)|*.nasc|Legacy AV Matrix files (*.avmatrix)|*.avmatrix|All files (*.*)|*.*";
+    public const string CompanyOpenFilter =
+        "InNasc company files (*.nasc)|*.nasc";
     public const string GlobalFilter =
         "InNasc Global files (*.nascglobal)|*.nascglobal|All files (*.*)|*.*";
 

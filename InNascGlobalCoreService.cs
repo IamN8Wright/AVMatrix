@@ -54,6 +54,11 @@ internal static class InNascGlobalCoreService
         var catalog = ReadCatalog(envelope, key);
         var profile = catalog.Users.FirstOrDefault(x => x.Id == account.Id && x.Enabled)
             ?? throw new MasterAuthorizationException("This InNasc account is disabled or no longer exists.");
+        if (!HasCompanyCredential(account))
+        {
+            SetCompanyCredential(account, password, key);
+            Write(path, envelope, catalog, key);
+        }
         return Login(profile, key, catalog);
     }
 
@@ -130,7 +135,7 @@ internal static class InNascGlobalCoreService
             {
                 ProjectName = name,
                 Clients = [],
-                MasterAccess = BuildCompanyAccess(catalog, company.Id)
+                MasterAccess = BuildCompanyAccess(globalPath, catalog, session, company)
             };
             PortableDataService.ExportMaster(path, data, masterSession);
             Save(globalPath, catalog, session);
@@ -176,7 +181,7 @@ internal static class InNascGlobalCoreService
         try
         {
             imported.ProjectName = name;
-            imported.MasterAccess = BuildCompanyAccess(catalog, company.Id);
+            imported.MasterAccess = BuildCompanyAccess(globalPath, catalog, session, company);
             var companySession = CreateCompanySession(session, catalog, company);
             PortableDataService.ExportMaster(
                 destination,
@@ -249,25 +254,50 @@ internal static class InNascGlobalCoreService
         Write(path, envelope, catalog, session.GlobalKey);
     }
 
-    private static MasterAccessControl BuildCompanyAccess(InNascGlobalCatalog catalog, Guid companyId)
+    public static MasterAccessControl BuildCompanyAccess(
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        InNascCompanyRecord company,
+        MasterAccessControl? existing = null)
     {
-        var access = new MasterAccessControl();
+        RequireAdmin(catalog, session);
+        var envelope = ReadEnvelope(ValidateGlobalPath(globalPath));
+        RequireSession(envelope, catalog, session);
+        var access = new MasterAccessControl
+        {
+            MasterId = existing?.MasterId ?? Guid.NewGuid(),
+            Checkouts = existing?.Checkouts ?? [],
+            ClientSubmatrices = existing?.ClientSubmatrices ?? []
+        };
         foreach (var user in catalog.Users.Where(x => x.Enabled))
         {
-            var membership = user.Companies.FirstOrDefault(x => x.CompanyId == companyId);
+            var membership = user.Companies.FirstOrDefault(x => x.CompanyId == company.Id);
             if (!user.IsGlobalAdmin && membership is null) continue;
-            access.Users.Add(new MasterUserRecord
-            {
-                Id = user.Id,
-                Username = user.Username,
-                DisplayName = user.DisplayName,
-                Role = user.IsGlobalAdmin ? MasterUserRole.Owner : membership!.Role,
-                Enabled = true,
-                HasAllClientAccess = user.IsGlobalAdmin || membership!.HasAllClientAccess,
-                ClientAccessIds = user.IsGlobalAdmin ? [] : membership!.ClientAccessIds.ToList()
-            });
+            var account = envelope.Accounts.FirstOrDefault(x => x.Id == user.Id && x.Enabled)
+                ?? throw new InvalidOperationException(
+                    $"The Global account for {user.DisplayName} is missing or disabled.");
+            if (!HasCompanyCredential(account))
+                continue;
+            access.Users.Add(CreateCompanyUser(
+                account,
+                user,
+                user.IsGlobalAdmin ? MasterUserRole.Owner : membership!.Role,
+                user.IsGlobalAdmin || membership!.HasAllClientAccess,
+                user.IsGlobalAdmin ? [] : membership!.ClientAccessIds,
+                company.CompanyKeyBase64,
+                session.GlobalKey));
         }
         return access;
+    }
+
+    public static bool HasCompanyCredential(
+        string globalPath,
+        Guid userId)
+    {
+        var envelope = ReadEnvelope(ValidateGlobalPath(globalPath));
+        var account = envelope.Accounts.FirstOrDefault(x => x.Id == userId);
+        return account is not null && HasCompanyCredential(account);
     }
 
     private static string ValidateCompanyName(InNascGlobalCatalog catalog, string companyName)
@@ -401,7 +431,123 @@ internal static class InNascGlobalCoreService
         account.GlobalKeyCiphertextBase64 = Convert.ToBase64String(cipher);
         account.GlobalKeyTagBase64 = Convert.ToBase64String(tag);
         CryptographicOperations.ZeroMemory(wrapKey);
+        SetCompanyCredential(account, password, globalKey);
     }
+
+    private static void SetCompanyCredential(
+        InNascGlobalAccessRecord account,
+        string password,
+        string globalKey)
+    {
+        var companySalt = RandomNumberGenerator.GetBytes(16);
+        var companyKeyCredential = Rfc2898DeriveBytes.Pbkdf2(
+            password,
+            companySalt,
+            account.PasswordIterations,
+            HashAlgorithmName.SHA256,
+            32);
+        var globalEncryptionKey = Convert.FromBase64String(globalKey);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var cipher = new byte[companyKeyCredential.Length];
+        var tag = new byte[16];
+        try
+        {
+            using var aes = new AesGcm(globalEncryptionKey, tag.Length);
+            aes.Encrypt(nonce, companyKeyCredential, cipher, tag);
+            account.CompanyKeySaltBase64 = Convert.ToBase64String(companySalt);
+            account.CompanyKeyCredentialNonceBase64 = Convert.ToBase64String(nonce);
+            account.CompanyKeyCredentialCiphertextBase64 = Convert.ToBase64String(cipher);
+            account.CompanyKeyCredentialTagBase64 = Convert.ToBase64String(tag);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(companyKeyCredential);
+            CryptographicOperations.ZeroMemory(globalEncryptionKey);
+        }
+    }
+
+    private static MasterUserRecord CreateCompanyUser(
+        InNascGlobalAccessRecord account,
+        InNascGlobalUserRecord user,
+        MasterUserRole role,
+        bool hasAllClientAccess,
+        IEnumerable<Guid> clientAccessIds,
+        string companyKey,
+        string globalKey)
+    {
+        if (!HasCompanyCredential(account))
+            throw new InvalidOperationException(
+                $"Reset the password for {user.DisplayName} before publishing company access. " +
+                "This upgrades the 5.0.x account for direct .nasc login.");
+
+        var credential = UnwrapCompanyCredential(account, globalKey);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var plaintext = Encoding.UTF8.GetBytes(companyKey);
+        var ciphertext = new byte[plaintext.Length];
+        var tag = new byte[16];
+        try
+        {
+            using var aes = new AesGcm(credential, tag.Length);
+            aes.Encrypt(nonce, plaintext, ciphertext, tag);
+            return new MasterUserRecord
+            {
+                Id = user.Id,
+                Username = user.Username,
+                DisplayName = user.DisplayName,
+                Role = role,
+                PasswordSaltBase64 = account.PasswordSaltBase64,
+                PasswordHashBase64 = account.PasswordHashBase64,
+                PasswordIterations = account.PasswordIterations,
+                MasterKeySaltBase64 = account.CompanyKeySaltBase64,
+                MasterKeyNonceBase64 = Convert.ToBase64String(nonce),
+                MasterKeyCiphertextBase64 = Convert.ToBase64String(ciphertext),
+                MasterKeyTagBase64 = Convert.ToBase64String(tag),
+                Enabled = true,
+                HasAllClientAccess = hasAllClientAccess,
+                ClientAccessIds = hasAllClientAccess ? [] : clientAccessIds.Distinct().ToList()
+            };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(credential);
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
+    private static byte[] UnwrapCompanyCredential(
+        InNascGlobalAccessRecord account,
+        string globalKey)
+    {
+        var key = Convert.FromBase64String(globalKey);
+        var ciphertext = Convert.FromBase64String(account.CompanyKeyCredentialCiphertextBase64);
+        var plaintext = new byte[ciphertext.Length];
+        try
+        {
+            using var aes = new AesGcm(key, 16);
+            aes.Decrypt(
+                Convert.FromBase64String(account.CompanyKeyCredentialNonceBase64),
+                ciphertext,
+                Convert.FromBase64String(account.CompanyKeyCredentialTagBase64),
+                plaintext);
+            return plaintext;
+        }
+        catch (CryptographicException)
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+            throw new InvalidDataException(
+                $"The company login credential for {account.Username} is unreadable.");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    private static bool HasCompanyCredential(InNascGlobalAccessRecord account) =>
+        !string.IsNullOrWhiteSpace(account.CompanyKeySaltBase64) &&
+        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialNonceBase64) &&
+        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialCiphertextBase64) &&
+        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialTagBase64);
 
     private static bool VerifyPassword(InNascGlobalAccessRecord account, string password)
     {
