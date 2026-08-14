@@ -16,6 +16,7 @@ internal static class Program
         try
         {
             RunDirectCompanyLogin(root);
+            RunDeviceLimitEnforcement(root);
             RunLegacyReadCompatibility(root);
             RunBrandingFlow();
             Console.WriteLine("InNasc user application smoke tests passed.");
@@ -71,6 +72,37 @@ internal static class Program
         File.WriteAllText(legacyPath, json);
         Require(PortableDataService.Import(legacyPath).Data.Clients.Count == 1,
             "Legacy AV Matrix transfer data is no longer readable for Admin migration.");
+    }
+
+    private static void RunDeviceLimitEnforcement(string root)
+    {
+        var companyPath = Path.Combine(root, "Tiered.nasc");
+        var access = new MasterAccessControl
+        {
+            LicenseId = Guid.NewGuid(),
+            LicenseName = "Tiered Company",
+            DeviceLimit = 1
+        };
+        _ = MasterAccessService.CreateInitialOwner(
+            access, "tier-owner", "Tier Owner", OwnerPassword);
+        var session = MasterAccessService.SignIn(access, "tier-owner", OwnerPassword);
+        var room = new RoomRecord { Name = "Room", Equipment = [new EquipmentRecord { Description = "One" }] };
+        var location = new LocationRecord { Name = "Location", Rooms = [room] };
+        var data = new AppData
+        {
+            ProjectName = "Tiered Company",
+            Clients = [new ClientRecord { Name = "Client", Locations = [location] }],
+            MasterAccess = access
+        };
+        PortableDataService.ExportMaster(companyPath, data, session);
+        var published = PortableDataService.ReadMasterAccess(companyPath);
+        Require(published.DeviceLimit == 1 && published.LicenseId == access.LicenseId,
+            "The .nasc license metadata did not round-trip.");
+        RequireThrows<DeviceLimitExceededException>(() =>
+            DeviceLimitPolicy.RequireCapacity(published, data, 1));
+        room.Equipment.Add(new EquipmentRecord { Description = "Two" });
+        RequireThrows<DeviceLimitExceededException>(() =>
+            PortableDataService.ExportMaster(companyPath, data, session));
     }
 
     private static void RunBrandingFlow()

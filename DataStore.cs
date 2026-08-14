@@ -112,6 +112,8 @@ public sealed class DataStore
         data.Settings.RecoveredCheckoutHolder ??= string.Empty;
         data.Settings.LastMasterTarget ??= string.Empty;
         data.MasterAccess ??= new MasterAccessControl();
+        data.MasterAccess.LicenseName ??= string.Empty;
+        if (data.MasterAccess.DeviceLimit < 0) data.MasterAccess.DeviceLimit = 0;
         data.MasterAccess.Users ??= [];
         data.MasterAccess.Checkouts ??= [];
         data.MasterAccess.ClientSubmatrices ??= [];

@@ -6,6 +6,7 @@ on:
       - main
       - agent/innasc-major-update
       - agent/innasc-global-admin-split
+      - agent/innasc-company-tiers
     tags:
       - 'v*'
   pull_request:

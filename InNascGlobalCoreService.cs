@@ -17,28 +17,36 @@ internal static class InNascGlobalCoreService
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static InNascGlobalLogin Create(string path, string username, string displayName, string password)
+    public static InNascGlobalLogin Create(
+        string path,
+        string username,
+        string displayName,
+        string password)
     {
         path = ValidateGlobalPath(path);
         if (File.Exists(path)) throw new IOException("That InNasc Global file already exists.");
         ValidatePassword(password);
-        var name = NormalizeUsername(username);
+        var normalized = NormalizeUsername(username);
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        var id = Guid.NewGuid();
-        var envelope = new InNascGlobalEnvelope { CatalogId = Guid.NewGuid() };
-        var account = new InNascGlobalAccessRecord { Id = id, Username = name };
-        SetPassword(account, password, key);
-        envelope.Accounts.Add(account);
-        var profile = new InNascGlobalUserRecord
+        var admin = new InNascGlobalAdminRecord
         {
-            Id = id,
-            Username = name,
-            DisplayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim(),
-            IsGlobalAdmin = true
+            Username = normalized,
+            DisplayName = DisplayName(displayName, normalized)
         };
-        var catalog = new InNascGlobalCatalog { CatalogId = envelope.CatalogId, Users = [profile] };
+        var account = new InNascGlobalAccessRecord { Id = admin.Id, Username = normalized };
+        SetAdminPassword(account, password, key);
+        var envelope = new InNascGlobalEnvelope
+        {
+            CatalogId = Guid.NewGuid(),
+            Accounts = [account]
+        };
+        var catalog = new InNascGlobalCatalog
+        {
+            CatalogId = envelope.CatalogId,
+            GlobalAdmins = [admin]
+        };
         Write(path, envelope, catalog, key);
-        return Login(profile, key, catalog);
+        return Login(admin, key, catalog);
     }
 
     public static InNascGlobalLogin SignIn(string path, string username, string password)
@@ -46,105 +54,153 @@ internal static class InNascGlobalCoreService
         path = ValidateGlobalPath(path);
         var envelope = ReadEnvelope(path);
         var normalized = NormalizeUsername(username);
-        var account = envelope.Accounts.FirstOrDefault(x =>
-            x.Enabled && string.Equals(x.Username, normalized, StringComparison.OrdinalIgnoreCase));
+        var account = envelope.Accounts.FirstOrDefault(candidate =>
+            candidate.Enabled &&
+            string.Equals(candidate.Username, normalized, StringComparison.OrdinalIgnoreCase));
         if (account is null || !VerifyPassword(account, password))
             throw new MasterAuthorizationException("The username or password is not valid.");
+
         var key = UnwrapKey(account, password);
         var catalog = ReadCatalog(envelope, key);
-        var profile = catalog.Users.FirstOrDefault(x => x.Id == account.Id && x.Enabled)
-            ?? throw new MasterAuthorizationException("This InNasc account is disabled or no longer exists.");
-        if (!HasCompanyCredential(account))
-        {
-            SetCompanyCredential(account, password, key);
-            Write(path, envelope, catalog, key);
-        }
-        return Login(profile, key, catalog);
+        var upgraded = UpgradeCatalog(envelope, catalog);
+        var admin = catalog.GlobalAdmins.FirstOrDefault(candidate =>
+            candidate.Id == account.Id && candidate.Enabled)
+            ?? throw new MasterAuthorizationException(
+                "This login belongs to a company user. Open the company's .nasc file in InNasc instead.");
+        if (upgraded) Write(path, envelope, catalog, key);
+        return Login(admin, key, catalog);
     }
 
     public static InNascGlobalCatalog Load(string path, InNascGlobalSession session)
     {
-        var envelope = ReadEnvelope(ValidateGlobalPath(path));
+        path = ValidateGlobalPath(path);
+        var envelope = ReadEnvelope(path);
         var catalog = ReadCatalog(envelope, session.GlobalKey);
+        var upgraded = UpgradeCatalog(envelope, catalog);
         RequireSession(envelope, catalog, session);
+        if (upgraded) Write(path, envelope, catalog, session.GlobalKey);
         return catalog;
     }
 
-    public static InNascGlobalUserRecord AddUser(
-        string path, InNascGlobalCatalog catalog, InNascGlobalSession session,
-        string username, string displayName, string temporaryPassword, bool globalAdmin)
-    {
-        RequireAdmin(catalog, session);
-        ValidatePassword(temporaryPassword);
-        var envelope = ReadEnvelope(ValidateGlobalPath(path));
-        RequireSession(envelope, catalog, session);
-        var normalized = NormalizeUsername(username);
-        if (envelope.Accounts.Any(x => string.Equals(x.Username, normalized, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("That username already exists.");
-        var id = Guid.NewGuid();
-        var account = new InNascGlobalAccessRecord { Id = id, Username = normalized };
-        SetPassword(account, temporaryPassword, session.GlobalKey);
-        envelope.Accounts.Add(account);
-        var user = new InNascGlobalUserRecord
-        {
-            Id = id,
-            Username = normalized,
-            DisplayName = string.IsNullOrWhiteSpace(displayName) ? normalized : displayName.Trim(),
-            IsGlobalAdmin = globalAdmin
-        };
-        catalog.Users.Add(user);
-        Write(path, envelope, catalog, session.GlobalKey);
-        return user;
-    }
-
-    public static void ResetPassword(
-        string path, InNascGlobalCatalog catalog, InNascGlobalSession session, Guid userId, string password)
+    public static InNascGlobalAdminRecord AddGlobalAdmin(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        string username,
+        string displayName,
+        string password)
     {
         RequireAdmin(catalog, session);
         ValidatePassword(password);
         var envelope = ReadEnvelope(ValidateGlobalPath(path));
         RequireSession(envelope, catalog, session);
-        var account = envelope.Accounts.FirstOrDefault(x => x.Id == userId)
-            ?? throw new InvalidOperationException("The selected account no longer exists.");
-        SetPassword(account, password, session.GlobalKey);
+        var normalized = NormalizeUsername(username);
+        if (envelope.Accounts.Any(candidate =>
+                string.Equals(candidate.Username, normalized, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("That Global Admin username already exists.");
+
+        var admin = new InNascGlobalAdminRecord
+        {
+            Username = normalized,
+            DisplayName = DisplayName(displayName, normalized)
+        };
+        var account = new InNascGlobalAccessRecord { Id = admin.Id, Username = normalized };
+        SetAdminPassword(account, password, session.GlobalKey);
+        envelope.Accounts.Add(account);
+        catalog.GlobalAdmins.Add(admin);
+        Write(path, envelope, catalog, session.GlobalKey);
+        return admin;
+    }
+
+    public static void ResetGlobalAdminPassword(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid adminId,
+        string password)
+    {
+        RequireAdmin(catalog, session);
+        ValidatePassword(password);
+        var envelope = ReadEnvelope(ValidateGlobalPath(path));
+        RequireSession(envelope, catalog, session);
+        var account = envelope.Accounts.FirstOrDefault(candidate => candidate.Id == adminId)
+            ?? throw new InvalidOperationException("The selected Global Admin no longer exists.");
+        SetAdminPassword(account, password, session.GlobalKey);
+        Write(path, envelope, catalog, session.GlobalKey);
+    }
+
+    public static void DeleteGlobalAdmin(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid adminId)
+    {
+        RequireAdmin(catalog, session);
+        if (adminId == session.UserId)
+            throw new InvalidOperationException("You cannot delete the Global Admin currently signed in.");
+        if (catalog.GlobalAdmins.Count(candidate => candidate.Enabled) <= 1)
+            throw new InvalidOperationException("At least one enabled Global Admin must remain.");
+        var envelope = ReadEnvelope(ValidateGlobalPath(path));
+        RequireSession(envelope, catalog, session);
+        var admin = RequiredAdmin(catalog, adminId);
+        var account = envelope.Accounts.FirstOrDefault(candidate => candidate.Id == adminId)
+            ?? throw new InvalidOperationException("The selected Global Admin account no longer exists.");
+        catalog.GlobalAdmins.Remove(admin);
+        envelope.Accounts.Remove(account);
         Write(path, envelope, catalog, session.GlobalKey);
     }
 
     public static InNascCompanyRecord CreateCompany(
-        string globalPath, InNascGlobalCatalog catalog, InNascGlobalSession session,
-        string companyName, string companyPath)
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        string companyName,
+        string companyPath,
+        int deviceLimit = 250)
     {
         RequireAdmin(catalog, session);
-        var name = companyName.Trim();
-        if (name.Length == 0) throw new InvalidOperationException("Enter a company name.");
-        if (catalog.Companies.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("A company with that name already exists.");
-        var path = InNascFileTypes.ValidateNewCompanyPath(companyPath);
-        if (File.Exists(path)) throw new IOException("That company file already exists.");
-        var company = new InNascCompanyRecord
-        {
-            Name = name,
-            FilePath = path,
-            CompanyKeyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-        };
+        var name = ValidateCompanyName(catalog, companyName);
+        ValidateDeviceLimit(deviceLimit);
+        var company = new InNascCompanyRecord { Name = name };
         catalog.Companies.Add(company);
         try
         {
-            var masterSession = CreateCompanySession(session, catalog, company);
-            var data = new AppData
-            {
-                ProjectName = name,
-                Clients = [],
-                MasterAccess = BuildCompanyAccess(globalPath, catalog, session, company)
-            };
-            PortableDataService.ExportMaster(path, data, masterSession);
+            _ = AddCompanyFileCore(company, name, companyPath, deviceLimit);
+            WriteCompanyFile(globalPath, catalog, session, company, company.Files[0]);
             Save(globalPath, catalog, session);
             return company;
         }
         catch
         {
             catalog.Companies.Remove(company);
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            foreach (var file in company.Files) TryDeleteFile(file.FilePath);
+            throw;
+        }
+    }
+
+    public static InNascCompanyFileRecord AddCompanyFile(
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        string fileName,
+        string companyPath,
+        int deviceLimit)
+    {
+        RequireAdmin(catalog, session);
+        ValidateDeviceLimit(deviceLimit);
+        var company = RequiredCompany(catalog, companyId);
+        var file = AddCompanyFileCore(company, fileName, companyPath, deviceLimit);
+        try
+        {
+            WriteCompanyFile(globalPath, catalog, session, company, file);
+            Save(globalPath, catalog, session);
+            return file;
+        }
+        catch
+        {
+            company.Files.Remove(file);
+            TryDeleteFile(file.FilePath);
             throw;
         }
     }
@@ -169,30 +225,25 @@ internal static class InNascGlobalCoreService
         var destination = InNascFileTypes.ValidateNewCompanyPath(destinationPath);
         if (File.Exists(destination))
             throw new IOException("That InNasc company file already exists.");
-
         var imported = PortableDataService.Import(source, legacyPasswordOrKey).Data;
-        var company = new InNascCompanyRecord
-        {
-            Name = name,
-            FilePath = destination,
-            CompanyKeyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-        };
+        var company = new InNascCompanyRecord { Name = name };
+        var file = AddCompanyFileCore(company, name, destination, 0);
         catalog.Companies.Add(company);
         try
         {
             imported.ProjectName = name;
-            imported.MasterAccess = BuildCompanyAccess(globalPath, catalog, session, company);
-            var companySession = CreateCompanySession(session, catalog, company);
+            imported.MasterAccess = BuildCompanyAccess(
+                company, file, session.GlobalKey, imported.MasterAccess);
             PortableDataService.ExportMaster(
                 destination,
                 ClientSubmatrixService.MasterMetadataOnly(imported),
-                companySession);
+                CreateCompanyFileSession(session, file));
             MigrateLegacyClientPayloads(
                 source,
                 destination,
                 imported,
                 legacyPasswordOrKey,
-                company.CompanyKeyBase64);
+                file.CompanyKeyBase64);
             Save(globalPath, catalog, session);
             return company;
         }
@@ -204,49 +255,185 @@ internal static class InNascGlobalCoreService
         }
     }
 
-    public static void SetMembership(
-        string path, InNascGlobalCatalog catalog, InNascGlobalSession session,
-        Guid userId, Guid companyId, bool assigned, MasterUserRole role)
+    public static InNascCompanyUserRecord AddCompanyUser(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        string username,
+        string displayName,
+        string password,
+        MasterUserRole role)
     {
         RequireAdmin(catalog, session);
-        var user = catalog.Users.FirstOrDefault(x => x.Id == userId)
-            ?? throw new InvalidOperationException("The selected user no longer exists.");
-        if (user.IsGlobalAdmin) return;
-        var membership = user.Companies.FirstOrDefault(x => x.CompanyId == companyId);
-        if (!assigned)
+        ValidatePassword(password);
+        var company = RequiredCompany(catalog, companyId);
+        var normalized = NormalizeUsername(username);
+        if (company.Users.Any(candidate =>
+                string.Equals(candidate.Username, normalized, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("That username already exists in this company.");
+        var user = new InNascCompanyUserRecord
         {
-            if (membership is not null) user.Companies.Remove(membership);
+            Username = normalized,
+            DisplayName = DisplayName(displayName, normalized),
+            Role = role,
+            HasAllClientAccess = true
+        };
+        SetCompanyUserPassword(user, password, session.GlobalKey);
+        company.Users.Add(user);
+        Save(path, catalog, session);
+        return user;
+    }
+
+    public static void UpdateCompanyUser(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid userId,
+        string displayName,
+        MasterUserRole role)
+    {
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        var user = RequiredCompanyUser(company, userId);
+        if (user.Role == MasterUserRole.Owner && role != MasterUserRole.Owner &&
+            company.Users.Count(candidate => candidate.Enabled && candidate.Role == MasterUserRole.Owner) <= 1)
+            throw new InvalidOperationException(
+                "Assign another Company Owner before changing the last Owner's access level.");
+        user.DisplayName = DisplayName(displayName, user.Username);
+        user.Role = role;
+        if (role == MasterUserRole.Owner)
+        {
+            user.HasAllClientAccess = true;
+            user.ClientAccessIds.Clear();
         }
-        else if (membership is null)
-            user.Companies.Add(new InNascCompanyMembership { CompanyId = companyId, Role = role });
-        else membership.Role = role;
         Save(path, catalog, session);
     }
 
-    public static IReadOnlyList<InNascCompanyRecord> CompaniesFor(
-        InNascGlobalCatalog catalog, InNascGlobalSession session)
+    public static void ResetCompanyUserPassword(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid userId,
+        string password)
     {
-        var user = catalog.Users.First(x => x.Id == session.UserId);
-        var allowed = user.Companies.Select(x => x.CompanyId).ToHashSet();
-        return catalog.Companies
-            .Where(x => x.Enabled && (user.IsGlobalAdmin || allowed.Contains(x.Id)))
-            .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        RequireAdmin(catalog, session);
+        ValidatePassword(password);
+        var company = RequiredCompany(catalog, companyId);
+        SetCompanyUserPassword(RequiredCompanyUser(company, userId), password, session.GlobalKey);
+        Save(path, catalog, session);
     }
 
-    public static MasterSession CreateCompanySession(
-        InNascGlobalSession global, InNascGlobalCatalog catalog, InNascCompanyRecord company)
+    public static void DeleteCompanyUser(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid userId)
     {
-        var user = catalog.Users.First(x => x.Id == global.UserId);
-        var membership = user.Companies.FirstOrDefault(x => x.CompanyId == company.Id);
-        if (!user.IsGlobalAdmin && membership is null)
-            throw new MasterAuthorizationException("This account is not assigned to that company.");
-        return new MasterSession(
-            user.Id, user.Username, user.DisplayName,
-            user.IsGlobalAdmin ? MasterUserRole.Owner : membership!.Role,
-            company.CompanyKeyBase64);
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        var user = RequiredCompanyUser(company, userId);
+        if (user.Role == MasterUserRole.Owner &&
+            company.Users.Count(candidate => candidate.Enabled && candidate.Role == MasterUserRole.Owner) <= 1)
+            throw new InvalidOperationException(
+                "Assign another Company Owner before deleting the last Owner.");
+        company.Users.Remove(user);
+        Save(path, catalog, session);
     }
 
-    public static void Save(string path, InNascGlobalCatalog catalog, InNascGlobalSession session)
+    public static IReadOnlyList<string> DeleteCompany(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId)
+    {
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        var retainedPaths = company.Files.Select(file => file.FilePath).ToList();
+        catalog.Companies.Remove(company);
+        Save(path, catalog, session);
+        return retainedPaths;
+    }
+
+    public static string RemoveCompanyFile(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid fileId)
+    {
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        if (company.Files.Count(candidate => candidate.Enabled) <= 1)
+            throw new InvalidOperationException("A company must keep at least one .nasc file.");
+        var file = RequiredCompanyFile(company, fileId);
+        company.Files.Remove(file);
+        Save(path, catalog, session);
+        return file.FilePath;
+    }
+
+    public static void SetDeviceLimit(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid fileId,
+        int deviceLimit)
+    {
+        RequireAdmin(catalog, session);
+        ValidateDeviceLimit(deviceLimit);
+        var company = RequiredCompany(catalog, companyId);
+        var file = RequiredCompanyFile(company, fileId);
+        var currentCount = GetDeviceCount(file);
+        if (deviceLimit > 0 && currentCount > deviceLimit)
+            throw new InvalidOperationException(
+                $"This .nasc file already contains {currentCount:N0} devices. " +
+                $"Choose a limit of at least {currentCount:N0}, or Unlimited.");
+        file.DeviceLimit = deviceLimit;
+        Save(path, catalog, session);
+    }
+
+    public static int GetDeviceCount(InNascCompanyFileRecord file)
+    {
+        if (!File.Exists(file.FilePath)) return 0;
+        var data = PortableDataService.Import(file.FilePath, file.CompanyKeyBase64).Data;
+        return DeviceLimitPolicy.CountDevices(data);
+    }
+
+    public static MasterAccessControl BuildCompanyAccess(
+        InNascCompanyRecord company,
+        InNascCompanyFileRecord file,
+        string globalKey,
+        MasterAccessControl? existing = null)
+    {
+        var access = new MasterAccessControl
+        {
+            MasterId = existing?.MasterId ?? Guid.NewGuid(),
+            Checkouts = existing?.Checkouts ?? [],
+            ClientSubmatrices = existing?.ClientSubmatrices ?? [],
+            LicenseId = file.Id,
+            LicenseName = string.IsNullOrWhiteSpace(file.Name) ? company.Name : file.Name,
+            DeviceLimit = file.DeviceLimit
+        };
+        foreach (var user in company.Users.Where(candidate => candidate.Enabled && candidate.CredentialReady))
+            access.Users.Add(CreatePublishedCompanyUser(
+                user, file.CompanyKeyBase64, globalKey));
+        return access;
+    }
+
+    public static MasterSession CreateCompanyFileSession(
+        InNascGlobalSession globalSession,
+        InNascCompanyFileRecord file) =>
+        new(globalSession.UserId, globalSession.Username, globalSession.DisplayName,
+            MasterUserRole.Owner, file.CompanyKeyBase64);
+
+    public static void Save(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session)
     {
         RequireAdmin(catalog, session);
         var envelope = ReadEnvelope(ValidateGlobalPath(path));
@@ -254,59 +441,463 @@ internal static class InNascGlobalCoreService
         Write(path, envelope, catalog, session.GlobalKey);
     }
 
-    public static MasterAccessControl BuildCompanyAccess(
+    private static InNascCompanyFileRecord AddCompanyFileCore(
+        InNascCompanyRecord company,
+        string fileName,
+        string companyPath,
+        int deviceLimit)
+    {
+        var path = InNascFileTypes.ValidateNewCompanyPath(companyPath);
+        if (File.Exists(path)) throw new IOException("That company file already exists.");
+        if (company.Files.Any(candidate =>
+                string.Equals(candidate.FilePath, path, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("That .nasc file is already assigned to this company.");
+        var name = string.IsNullOrWhiteSpace(fileName)
+            ? Path.GetFileNameWithoutExtension(path)
+            : fileName.Trim();
+        var file = new InNascCompanyFileRecord
+        {
+            Name = name,
+            FilePath = path,
+            CompanyKeyBase64 = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
+            DeviceLimit = deviceLimit
+        };
+        company.Files.Add(file);
+        return file;
+    }
+
+    private static void WriteCompanyFile(
         string globalPath,
         InNascGlobalCatalog catalog,
         InNascGlobalSession session,
         InNascCompanyRecord company,
-        MasterAccessControl? existing = null)
+        InNascCompanyFileRecord file)
     {
         RequireAdmin(catalog, session);
-        var envelope = ReadEnvelope(ValidateGlobalPath(globalPath));
-        RequireSession(envelope, catalog, session);
-        var access = new MasterAccessControl
+        _ = globalPath;
+        var data = new AppData
         {
-            MasterId = existing?.MasterId ?? Guid.NewGuid(),
-            Checkouts = existing?.Checkouts ?? [],
-            ClientSubmatrices = existing?.ClientSubmatrices ?? []
+            ProjectName = company.Name,
+            Clients = [],
+            MasterAccess = BuildCompanyAccess(company, file, session.GlobalKey)
         };
-        foreach (var user in catalog.Users.Where(x => x.Enabled))
-        {
-            var membership = user.Companies.FirstOrDefault(x => x.CompanyId == company.Id);
-            if (!user.IsGlobalAdmin && membership is null) continue;
-            var account = envelope.Accounts.FirstOrDefault(x => x.Id == user.Id && x.Enabled)
-                ?? throw new InvalidOperationException(
-                    $"The Global account for {user.DisplayName} is missing or disabled.");
-            if (!HasCompanyCredential(account))
-                continue;
-            access.Users.Add(CreateCompanyUser(
-                account,
-                user,
-                user.IsGlobalAdmin ? MasterUserRole.Owner : membership!.Role,
-                user.IsGlobalAdmin || membership!.HasAllClientAccess,
-                user.IsGlobalAdmin ? [] : membership!.ClientAccessIds,
-                company.CompanyKeyBase64,
-                session.GlobalKey));
-        }
-        return access;
+        PortableDataService.ExportMaster(file.FilePath, data, CreateCompanyFileSession(session, file));
     }
 
-    public static bool HasCompanyCredential(
-        string globalPath,
-        Guid userId)
+    private static bool UpgradeCatalog(
+        InNascGlobalEnvelope envelope,
+        InNascGlobalCatalog catalog)
     {
-        var envelope = ReadEnvelope(ValidateGlobalPath(globalPath));
-        var account = envelope.Accounts.FirstOrDefault(x => x.Id == userId);
-        return account is not null && HasCompanyCredential(account);
+        catalog.GlobalAdmins ??= [];
+        catalog.Companies ??= [];
+        catalog.Users ??= [];
+        var changed = false;
+
+        if (catalog.GlobalAdmins.Count == 0 && catalog.Users.Count > 0)
+        {
+            foreach (var legacyAdmin in catalog.Users.Where(user => user.IsGlobalAdmin))
+            {
+                catalog.GlobalAdmins.Add(new InNascGlobalAdminRecord
+                {
+                    Id = legacyAdmin.Id,
+                    Username = legacyAdmin.Username,
+                    DisplayName = legacyAdmin.DisplayName,
+                    Enabled = legacyAdmin.Enabled,
+                    CreatedUtc = legacyAdmin.CreatedUtc
+                });
+            }
+            changed = true;
+        }
+
+        foreach (var company in catalog.Companies)
+        {
+            company.Name ??= string.Empty;
+            company.LogoBase64 ??= string.Empty;
+            company.Notes ??= string.Empty;
+            company.Files ??= [];
+            company.Users ??= [];
+            if (company.Files.Count == 0 && !string.IsNullOrWhiteSpace(company.FilePath))
+            {
+                company.Files.Add(new InNascCompanyFileRecord
+                {
+                    Name = company.Name,
+                    FilePath = company.FilePath,
+                    CompanyKeyBase64 = company.CompanyKeyBase64,
+                    DeviceLimit = 0,
+                    CreatedUtc = company.CreatedUtc
+                });
+                changed = true;
+            }
+
+            if (company.Users.Count == 0 && catalog.Users.Count > 0)
+            {
+                foreach (var legacyUser in catalog.Users.Where(user =>
+                             user.Enabled && (user.IsGlobalAdmin ||
+                                 user.Companies.Any(membership => membership.CompanyId == company.Id))))
+                {
+                    var membership = legacyUser.Companies.FirstOrDefault(item => item.CompanyId == company.Id);
+                    var account = envelope.Accounts.FirstOrDefault(item => item.Id == legacyUser.Id);
+                    if (account is null) continue;
+                    company.Users.Add(new InNascCompanyUserRecord
+                    {
+                        Username = legacyUser.Username,
+                        DisplayName = legacyUser.DisplayName,
+                        Role = legacyUser.IsGlobalAdmin ? MasterUserRole.Owner : membership!.Role,
+                        PasswordSaltBase64 = account.PasswordSaltBase64,
+                        PasswordHashBase64 = account.PasswordHashBase64,
+                        PasswordIterations = account.PasswordIterations,
+                        CompanyKeySaltBase64 = account.CompanyKeySaltBase64,
+                        CompanyKeyCredentialNonceBase64 = account.CompanyKeyCredentialNonceBase64,
+                        CompanyKeyCredentialCiphertextBase64 = account.CompanyKeyCredentialCiphertextBase64,
+                        CompanyKeyCredentialTagBase64 = account.CompanyKeyCredentialTagBase64,
+                        HasAllClientAccess = legacyUser.IsGlobalAdmin || membership!.HasAllClientAccess,
+                        ClientAccessIds = legacyUser.IsGlobalAdmin ? [] : membership!.ClientAccessIds.ToList(),
+                        Enabled = true,
+                        CreatedUtc = legacyUser.CreatedUtc
+                    });
+                }
+                changed = true;
+            }
+        }
+
+        if (catalog.Users.Count > 0)
+        {
+            var adminIds = catalog.GlobalAdmins.Select(admin => admin.Id).ToHashSet();
+            envelope.Accounts.RemoveAll(account => !adminIds.Contains(account.Id));
+            catalog.Users.Clear();
+            changed = true;
+        }
+        if (catalog.FormatVersion < 2)
+        {
+            catalog.FormatVersion = 2;
+            changed = true;
+        }
+        return changed;
     }
 
-    private static string ValidateCompanyName(InNascGlobalCatalog catalog, string companyName)
+    private static void SetAdminPassword(
+        InNascGlobalAccessRecord account,
+        string password,
+        string globalKey)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(
+            password, salt, Iterations, HashAlgorithmName.SHA256, 32);
+        var wrapSalt = RandomNumberGenerator.GetBytes(16);
+        var wrapKey = Rfc2898DeriveBytes.Pbkdf2(
+            password, wrapSalt, Iterations, HashAlgorithmName.SHA256, 32);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var plain = Encoding.UTF8.GetBytes(globalKey);
+        var cipher = new byte[plain.Length];
+        var tag = new byte[16];
+        try
+        {
+            using var aes = new AesGcm(wrapKey, tag.Length);
+            aes.Encrypt(nonce, plain, cipher, tag);
+            account.PasswordSaltBase64 = Convert.ToBase64String(salt);
+            account.PasswordHashBase64 = Convert.ToBase64String(hash);
+            account.PasswordIterations = Iterations;
+            account.GlobalKeySaltBase64 = Convert.ToBase64String(wrapSalt);
+            account.GlobalKeyNonceBase64 = Convert.ToBase64String(nonce);
+            account.GlobalKeyCiphertextBase64 = Convert.ToBase64String(cipher);
+            account.GlobalKeyTagBase64 = Convert.ToBase64String(tag);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(hash);
+            CryptographicOperations.ZeroMemory(wrapKey);
+            CryptographicOperations.ZeroMemory(plain);
+        }
+    }
+
+    private static void SetCompanyUserPassword(
+        InNascCompanyUserRecord user,
+        string password,
+        string globalKey)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(
+            password, salt, Iterations, HashAlgorithmName.SHA256, 32);
+        var companySalt = RandomNumberGenerator.GetBytes(16);
+        var credential = Rfc2898DeriveBytes.Pbkdf2(
+            password, companySalt, Iterations, HashAlgorithmName.SHA256, 32);
+        var globalEncryptionKey = Convert.FromBase64String(globalKey);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var cipher = new byte[credential.Length];
+        var tag = new byte[16];
+        try
+        {
+            using var aes = new AesGcm(globalEncryptionKey, tag.Length);
+            aes.Encrypt(nonce, credential, cipher, tag);
+            user.PasswordSaltBase64 = Convert.ToBase64String(salt);
+            user.PasswordHashBase64 = Convert.ToBase64String(hash);
+            user.PasswordIterations = Iterations;
+            user.CompanyKeySaltBase64 = Convert.ToBase64String(companySalt);
+            user.CompanyKeyCredentialNonceBase64 = Convert.ToBase64String(nonce);
+            user.CompanyKeyCredentialCiphertextBase64 = Convert.ToBase64String(cipher);
+            user.CompanyKeyCredentialTagBase64 = Convert.ToBase64String(tag);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(hash);
+            CryptographicOperations.ZeroMemory(credential);
+            CryptographicOperations.ZeroMemory(globalEncryptionKey);
+        }
+    }
+
+    private static MasterUserRecord CreatePublishedCompanyUser(
+        InNascCompanyUserRecord user,
+        string companyKey,
+        string globalKey)
+    {
+        var credential = UnwrapCompanyCredential(user, globalKey);
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var plaintext = Encoding.UTF8.GetBytes(companyKey);
+        var ciphertext = new byte[plaintext.Length];
+        var tag = new byte[16];
+        try
+        {
+            using var aes = new AesGcm(credential, tag.Length);
+            aes.Encrypt(nonce, plaintext, ciphertext, tag);
+            return new MasterUserRecord
+            {
+                Id = user.Id,
+                Username = user.Username,
+                DisplayName = user.DisplayName,
+                Role = user.Role,
+                PasswordSaltBase64 = user.PasswordSaltBase64,
+                PasswordHashBase64 = user.PasswordHashBase64,
+                PasswordIterations = user.PasswordIterations,
+                MasterKeySaltBase64 = user.CompanyKeySaltBase64,
+                MasterKeyNonceBase64 = Convert.ToBase64String(nonce),
+                MasterKeyCiphertextBase64 = Convert.ToBase64String(ciphertext),
+                MasterKeyTagBase64 = Convert.ToBase64String(tag),
+                Enabled = user.Enabled,
+                HasAllClientAccess = user.Role == MasterUserRole.Owner || user.HasAllClientAccess,
+                ClientAccessIds = user.Role == MasterUserRole.Owner || user.HasAllClientAccess
+                    ? []
+                    : user.ClientAccessIds.Distinct().ToList(),
+                CreatedUtc = user.CreatedUtc
+            };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(credential);
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
+    private static byte[] UnwrapCompanyCredential(
+        InNascCompanyUserRecord user,
+        string globalKey)
+    {
+        var key = Convert.FromBase64String(globalKey);
+        var ciphertext = Convert.FromBase64String(user.CompanyKeyCredentialCiphertextBase64);
+        var plaintext = new byte[ciphertext.Length];
+        try
+        {
+            using var aes = new AesGcm(key, 16);
+            aes.Decrypt(
+                Convert.FromBase64String(user.CompanyKeyCredentialNonceBase64),
+                ciphertext,
+                Convert.FromBase64String(user.CompanyKeyCredentialTagBase64),
+                plaintext);
+            return plaintext;
+        }
+        catch (CryptographicException)
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+            throw new InvalidDataException(
+                $"The company login credential for {user.Username} is unreadable.");
+        }
+        finally { CryptographicOperations.ZeroMemory(key); }
+    }
+
+    private static bool VerifyPassword(InNascGlobalAccessRecord account, string password)
+    {
+        try
+        {
+            var actual = Rfc2898DeriveBytes.Pbkdf2(
+                password,
+                Convert.FromBase64String(account.PasswordSaltBase64),
+                account.PasswordIterations,
+                HashAlgorithmName.SHA256,
+                32);
+            try
+            {
+                return CryptographicOperations.FixedTimeEquals(
+                    actual, Convert.FromBase64String(account.PasswordHashBase64));
+            }
+            finally { CryptographicOperations.ZeroMemory(actual); }
+        }
+        catch { return false; }
+    }
+
+    private static string UnwrapKey(InNascGlobalAccessRecord account, string password)
+    {
+        var key = Rfc2898DeriveBytes.Pbkdf2(
+            password,
+            Convert.FromBase64String(account.GlobalKeySaltBase64),
+            account.PasswordIterations,
+            HashAlgorithmName.SHA256,
+            32);
+        var cipher = Convert.FromBase64String(account.GlobalKeyCiphertextBase64);
+        var plain = new byte[cipher.Length];
+        try
+        {
+            using var aes = new AesGcm(key, 16);
+            aes.Decrypt(
+                Convert.FromBase64String(account.GlobalKeyNonceBase64),
+                cipher,
+                Convert.FromBase64String(account.GlobalKeyTagBase64),
+                plain);
+            return Encoding.UTF8.GetString(plain);
+        }
+        catch (CryptographicException)
+        {
+            throw new MasterAuthorizationException("The username or password is not valid.");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plain);
+        }
+    }
+
+    private static string ValidateGlobalPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException("Choose an InNasc Global file.");
+        var full = Path.GetFullPath(path.Trim());
+        if (!string.Equals(
+                Path.GetExtension(full),
+                InNascFileTypes.GlobalExtension,
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("InNasc Global files must use the .nascglobal extension.");
+        return full;
+    }
+
+    private static InNascGlobalEnvelope ReadEnvelope(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException("The InNasc Global file could not be found.", path);
+        var result = JsonSerializer.Deserialize<InNascGlobalEnvelope>(File.ReadAllBytes(path), Json)
+            ?? throw new InvalidDataException("The InNasc Global file is unreadable.");
+        if (result.Format != "InNasc Global" || result.FormatVersion != 1)
+            throw new InvalidDataException("This InNasc Global format is not supported.");
+        result.Accounts ??= [];
+        return result;
+    }
+
+    private static InNascGlobalCatalog ReadCatalog(InNascGlobalEnvelope envelope, string key)
+    {
+        var protectedBytes = Convert.FromBase64String(envelope.PayloadBase64);
+        var plain = JwePasswordProtection.Unprotect(protectedBytes, key);
+        var catalog = JsonSerializer.Deserialize<InNascGlobalCatalog>(plain, Json)
+            ?? throw new InvalidDataException("The InNasc Global catalog is unreadable.");
+        if (catalog.CatalogId != envelope.CatalogId)
+            throw new InvalidDataException(
+                "The InNasc Global catalog identity does not match its envelope.");
+        return catalog;
+    }
+
+    private static void Write(
+        string path,
+        InNascGlobalEnvelope envelope,
+        InNascGlobalCatalog catalog,
+        string globalKey)
+    {
+        envelope.PayloadBase64 = Convert.ToBase64String(
+            JwePasswordProtection.Protect(
+                JsonSerializer.SerializeToUtf8Bytes(catalog, Json), globalKey));
+        var full = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var temp = full + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(envelope, Json));
+            File.Move(temp, full, true);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
+    }
+
+    private static void RequireAdmin(InNascGlobalCatalog catalog, InNascGlobalSession session)
+    {
+        if (!session.IsGlobalAdmin ||
+            !catalog.GlobalAdmins.Any(admin => admin.Id == session.UserId && admin.Enabled))
+            throw new MasterAuthorizationException("Global Admin access is required.");
+    }
+
+    private static void RequireSession(
+        InNascGlobalEnvelope envelope,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session)
+    {
+        if (!envelope.Accounts.Any(account => account.Id == session.UserId && account.Enabled) ||
+            !catalog.GlobalAdmins.Any(admin => admin.Id == session.UserId && admin.Enabled))
+            throw new MasterAuthorizationException("This InNasc Global session is no longer valid.");
+    }
+
+    private static InNascGlobalAdminRecord RequiredAdmin(
+        InNascGlobalCatalog catalog,
+        Guid adminId) =>
+        catalog.GlobalAdmins.FirstOrDefault(admin => admin.Id == adminId)
+        ?? throw new InvalidOperationException("The selected Global Admin no longer exists.");
+
+    private static InNascCompanyRecord RequiredCompany(
+        InNascGlobalCatalog catalog,
+        Guid companyId) =>
+        catalog.Companies.FirstOrDefault(company => company.Id == companyId && company.Enabled)
+        ?? throw new InvalidOperationException("The selected company no longer exists.");
+
+    private static InNascCompanyFileRecord RequiredCompanyFile(
+        InNascCompanyRecord company,
+        Guid fileId) =>
+        company.Files.FirstOrDefault(file => file.Id == fileId && file.Enabled)
+        ?? throw new InvalidOperationException("The selected .nasc file no longer exists.");
+
+    private static InNascCompanyUserRecord RequiredCompanyUser(
+        InNascCompanyRecord company,
+        Guid userId) =>
+        company.Users.FirstOrDefault(user => user.Id == userId)
+        ?? throw new InvalidOperationException("The selected company user no longer exists.");
+
+    private static string ValidateCompanyName(
+        InNascGlobalCatalog catalog,
+        string companyName)
     {
         var name = companyName.Trim();
         if (name.Length == 0) throw new InvalidOperationException("Enter a company name.");
-        if (catalog.Companies.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+        if (catalog.Companies.Any(company =>
+                string.Equals(company.Name, name, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("A company with that name already exists.");
         return name;
+    }
+
+    private static string NormalizeUsername(string value)
+    {
+        var result = value.Trim();
+        if (result.Length < 2)
+            throw new InvalidOperationException("Enter a username with at least two characters.");
+        return result;
+    }
+
+    private static string DisplayName(string value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static void ValidatePassword(string password)
+    {
+        if (password.Length < 8)
+            throw new InvalidOperationException("Passwords must contain at least 8 characters.");
+    }
+
+    private static void ValidateDeviceLimit(int deviceLimit)
+    {
+        if (deviceLimit < 0)
+            throw new InvalidOperationException("Device limits cannot be negative.");
     }
 
     private static void MigrateLegacyClientPayloads(
@@ -326,6 +917,12 @@ internal static class InNascGlobalCoreService
         }
     }
 
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch { }
+    }
+
     private static void TryDeleteMigratedCompany(string destinationPath)
     {
         try
@@ -340,246 +937,11 @@ internal static class InNascGlobalCoreService
         }
     }
 
-    private static InNascGlobalLogin Login(InNascGlobalUserRecord user, string key, InNascGlobalCatalog catalog) =>
-        new(new InNascGlobalSession(user.Id, user.Username, user.DisplayName, user.IsGlobalAdmin, key), catalog);
+    private static InNascGlobalLogin Login(
+        InNascGlobalAdminRecord admin,
+        string key,
+        InNascGlobalCatalog catalog) =>
+        new(new InNascGlobalSession(
+            admin.Id, admin.Username, admin.DisplayName, true, key), catalog);
 
-    private static string ValidateGlobalPath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) throw new InvalidOperationException("Choose an InNasc Global file.");
-        var full = Path.GetFullPath(path.Trim());
-        if (!string.Equals(Path.GetExtension(full), InNascFileTypes.GlobalExtension, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("InNasc Global files must use the .nascglobal extension.");
-        return full;
-    }
-
-    private static InNascGlobalEnvelope ReadEnvelope(string path)
-    {
-        if (!File.Exists(path)) throw new FileNotFoundException("The InNasc Global file could not be found.", path);
-        var result = JsonSerializer.Deserialize<InNascGlobalEnvelope>(File.ReadAllBytes(path), Json)
-            ?? throw new InvalidDataException("The InNasc Global file is unreadable.");
-        if (result.Format != "InNasc Global" || result.FormatVersion != 1)
-            throw new InvalidDataException("This InNasc Global format is not supported.");
-        return result;
-    }
-
-    private static InNascGlobalCatalog ReadCatalog(InNascGlobalEnvelope envelope, string key)
-    {
-        var protectedBytes = Convert.FromBase64String(envelope.PayloadBase64);
-        var plain = JwePasswordProtection.Unprotect(protectedBytes, key);
-        var catalog = JsonSerializer.Deserialize<InNascGlobalCatalog>(plain, Json)
-            ?? throw new InvalidDataException("The InNasc Global catalog is unreadable.");
-        if (catalog.CatalogId != envelope.CatalogId)
-            throw new InvalidDataException("The InNasc Global catalog identity does not match its envelope.");
-        return catalog;
-    }
-
-    private static void Write(
-        string path, InNascGlobalEnvelope envelope, InNascGlobalCatalog catalog, string globalKey)
-    {
-        envelope.PayloadBase64 = Convert.ToBase64String(
-            JwePasswordProtection.Protect(JsonSerializer.SerializeToUtf8Bytes(catalog, Json), globalKey));
-        var full = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        var temp = full + $".{Guid.NewGuid():N}.tmp";
-        File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(envelope, Json));
-        File.Move(temp, full, true);
-    }
-
-    private static void RequireAdmin(InNascGlobalCatalog catalog, InNascGlobalSession session)
-    {
-        var user = catalog.Users.FirstOrDefault(x => x.Id == session.UserId && x.Enabled);
-        if (user is null || !user.IsGlobalAdmin)
-            throw new MasterAuthorizationException("Global Admin access is required.");
-    }
-
-    private static void RequireSession(
-        InNascGlobalEnvelope envelope, InNascGlobalCatalog catalog, InNascGlobalSession session)
-    {
-        if (!envelope.Accounts.Any(x => x.Id == session.UserId && x.Enabled) ||
-            !catalog.Users.Any(x => x.Id == session.UserId && x.Enabled))
-            throw new MasterAuthorizationException("This InNasc Global session is no longer valid.");
-    }
-
-    private static string NormalizeUsername(string value)
-    {
-        var result = value.Trim();
-        if (result.Length < 2) throw new InvalidOperationException("Enter a username with at least two characters.");
-        return result;
-    }
-
-    private static void ValidatePassword(string password)
-    {
-        if (password.Length < 8) throw new InvalidOperationException("Passwords must contain at least 8 characters.");
-    }
-
-    private static void SetPassword(InNascGlobalAccessRecord account, string password, string globalKey)
-    {
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, 32);
-        var wrapSalt = RandomNumberGenerator.GetBytes(16);
-        var wrapKey = Rfc2898DeriveBytes.Pbkdf2(password, wrapSalt, Iterations, HashAlgorithmName.SHA256, 32);
-        var nonce = RandomNumberGenerator.GetBytes(12);
-        var plain = Encoding.UTF8.GetBytes(globalKey);
-        var cipher = new byte[plain.Length];
-        var tag = new byte[16];
-        using (var aes = new AesGcm(wrapKey, tag.Length)) aes.Encrypt(nonce, plain, cipher, tag);
-        account.PasswordSaltBase64 = Convert.ToBase64String(salt);
-        account.PasswordHashBase64 = Convert.ToBase64String(hash);
-        account.PasswordIterations = Iterations;
-        account.GlobalKeySaltBase64 = Convert.ToBase64String(wrapSalt);
-        account.GlobalKeyNonceBase64 = Convert.ToBase64String(nonce);
-        account.GlobalKeyCiphertextBase64 = Convert.ToBase64String(cipher);
-        account.GlobalKeyTagBase64 = Convert.ToBase64String(tag);
-        CryptographicOperations.ZeroMemory(wrapKey);
-        SetCompanyCredential(account, password, globalKey);
-    }
-
-    private static void SetCompanyCredential(
-        InNascGlobalAccessRecord account,
-        string password,
-        string globalKey)
-    {
-        var companySalt = RandomNumberGenerator.GetBytes(16);
-        var companyKeyCredential = Rfc2898DeriveBytes.Pbkdf2(
-            password,
-            companySalt,
-            account.PasswordIterations,
-            HashAlgorithmName.SHA256,
-            32);
-        var globalEncryptionKey = Convert.FromBase64String(globalKey);
-        var nonce = RandomNumberGenerator.GetBytes(12);
-        var cipher = new byte[companyKeyCredential.Length];
-        var tag = new byte[16];
-        try
-        {
-            using var aes = new AesGcm(globalEncryptionKey, tag.Length);
-            aes.Encrypt(nonce, companyKeyCredential, cipher, tag);
-            account.CompanyKeySaltBase64 = Convert.ToBase64String(companySalt);
-            account.CompanyKeyCredentialNonceBase64 = Convert.ToBase64String(nonce);
-            account.CompanyKeyCredentialCiphertextBase64 = Convert.ToBase64String(cipher);
-            account.CompanyKeyCredentialTagBase64 = Convert.ToBase64String(tag);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(companyKeyCredential);
-            CryptographicOperations.ZeroMemory(globalEncryptionKey);
-        }
-    }
-
-    private static MasterUserRecord CreateCompanyUser(
-        InNascGlobalAccessRecord account,
-        InNascGlobalUserRecord user,
-        MasterUserRole role,
-        bool hasAllClientAccess,
-        IEnumerable<Guid> clientAccessIds,
-        string companyKey,
-        string globalKey)
-    {
-        if (!HasCompanyCredential(account))
-            throw new InvalidOperationException(
-                $"Reset the password for {user.DisplayName} before publishing company access. " +
-                "This upgrades the 5.0.x account for direct .nasc login.");
-
-        var credential = UnwrapCompanyCredential(account, globalKey);
-        var nonce = RandomNumberGenerator.GetBytes(12);
-        var plaintext = Encoding.UTF8.GetBytes(companyKey);
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[16];
-        try
-        {
-            using var aes = new AesGcm(credential, tag.Length);
-            aes.Encrypt(nonce, plaintext, ciphertext, tag);
-            return new MasterUserRecord
-            {
-                Id = user.Id,
-                Username = user.Username,
-                DisplayName = user.DisplayName,
-                Role = role,
-                PasswordSaltBase64 = account.PasswordSaltBase64,
-                PasswordHashBase64 = account.PasswordHashBase64,
-                PasswordIterations = account.PasswordIterations,
-                MasterKeySaltBase64 = account.CompanyKeySaltBase64,
-                MasterKeyNonceBase64 = Convert.ToBase64String(nonce),
-                MasterKeyCiphertextBase64 = Convert.ToBase64String(ciphertext),
-                MasterKeyTagBase64 = Convert.ToBase64String(tag),
-                Enabled = true,
-                HasAllClientAccess = hasAllClientAccess,
-                ClientAccessIds = hasAllClientAccess ? [] : clientAccessIds.Distinct().ToList()
-            };
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(credential);
-            CryptographicOperations.ZeroMemory(plaintext);
-        }
-    }
-
-    private static byte[] UnwrapCompanyCredential(
-        InNascGlobalAccessRecord account,
-        string globalKey)
-    {
-        var key = Convert.FromBase64String(globalKey);
-        var ciphertext = Convert.FromBase64String(account.CompanyKeyCredentialCiphertextBase64);
-        var plaintext = new byte[ciphertext.Length];
-        try
-        {
-            using var aes = new AesGcm(key, 16);
-            aes.Decrypt(
-                Convert.FromBase64String(account.CompanyKeyCredentialNonceBase64),
-                ciphertext,
-                Convert.FromBase64String(account.CompanyKeyCredentialTagBase64),
-                plaintext);
-            return plaintext;
-        }
-        catch (CryptographicException)
-        {
-            CryptographicOperations.ZeroMemory(plaintext);
-            throw new InvalidDataException(
-                $"The company login credential for {account.Username} is unreadable.");
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(key);
-        }
-    }
-
-    private static bool HasCompanyCredential(InNascGlobalAccessRecord account) =>
-        !string.IsNullOrWhiteSpace(account.CompanyKeySaltBase64) &&
-        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialNonceBase64) &&
-        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialCiphertextBase64) &&
-        !string.IsNullOrWhiteSpace(account.CompanyKeyCredentialTagBase64);
-
-    private static bool VerifyPassword(InNascGlobalAccessRecord account, string password)
-    {
-        try
-        {
-            var actual = Rfc2898DeriveBytes.Pbkdf2(
-                password, Convert.FromBase64String(account.PasswordSaltBase64),
-                account.PasswordIterations, HashAlgorithmName.SHA256, 32);
-            return CryptographicOperations.FixedTimeEquals(actual, Convert.FromBase64String(account.PasswordHashBase64));
-        }
-        catch { return false; }
-    }
-
-    private static string UnwrapKey(InNascGlobalAccessRecord account, string password)
-    {
-        var key = Rfc2898DeriveBytes.Pbkdf2(
-            password, Convert.FromBase64String(account.GlobalKeySaltBase64),
-            account.PasswordIterations, HashAlgorithmName.SHA256, 32);
-        var cipher = Convert.FromBase64String(account.GlobalKeyCiphertextBase64);
-        var plain = new byte[cipher.Length];
-        try
-        {
-            using var aes = new AesGcm(key, 16);
-            aes.Decrypt(
-                Convert.FromBase64String(account.GlobalKeyNonceBase64), cipher,
-                Convert.FromBase64String(account.GlobalKeyTagBase64), plain);
-            return Encoding.UTF8.GetString(plain);
-        }
-        catch (CryptographicException)
-        {
-            throw new MasterAuthorizationException("The username or password is not valid.");
-        }
-        finally { CryptographicOperations.ZeroMemory(key); }
-    }
 }

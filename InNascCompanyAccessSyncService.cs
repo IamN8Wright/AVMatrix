@@ -7,7 +7,7 @@ internal static class InNascCompanyAccessSyncService
         InNascGlobalCatalog catalog,
         InNascGlobalSession globalSession)
     {
-        foreach (var company in catalog.Companies.Where(x => x.Enabled && File.Exists(x.FilePath)))
+        foreach (var company in catalog.Companies.Where(company => company.Enabled))
             SyncCompany(globalPath, catalog, globalSession, company);
     }
 
@@ -17,21 +17,36 @@ internal static class InNascCompanyAccessSyncService
         InNascGlobalSession globalSession,
         InNascCompanyRecord company)
     {
+        foreach (var file in company.Files.Where(file => file.Enabled && File.Exists(file.FilePath)))
+            SyncFile(globalPath, catalog, globalSession, company, file);
+    }
+
+    public static void SyncFile(
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession globalSession,
+        InNascCompanyRecord company,
+        InNascCompanyFileRecord file)
+    {
         if (!globalSession.IsGlobalAdmin)
             throw new MasterAuthorizationException("Global Admin access is required.");
-        if (!File.Exists(company.FilePath)) return;
+        if (!File.Exists(file.FilePath)) return;
 
         var imported = PortableDataService.ImportBytes(
-            File.ReadAllBytes(company.FilePath), company.CompanyKeyBase64);
+            File.ReadAllBytes(file.FilePath), file.CompanyKeyBase64);
         var data = imported.Data;
         var old = data.MasterAccess ?? new MasterAccessControl();
         var next = InNascGlobalCoreService.BuildCompanyAccess(
-            globalPath, catalog, globalSession, company, old);
+            company, file, globalSession.GlobalKey, old);
 
-        var allowedUsers = next.Users.Select(x => x.Id).ToHashSet();
-        next.Checkouts.RemoveAll(x => !allowedUsers.Contains(x.UserId));
+        var allowedUsers = next.Users.Select(user => user.Id).ToHashSet();
+        next.Checkouts.RemoveAll(checkout => !allowedUsers.Contains(checkout.UserId));
         data.MasterAccess = next;
-        var companySession = InNascGlobalCoreService.CreateCompanySession(globalSession, catalog, company);
-        PortableDataService.ExportMaster(company.FilePath, data, companySession);
+        DeviceLimitPolicy.RequireWithinLimit(next, data);
+        var companySession = InNascGlobalCoreService.CreateCompanyFileSession(
+            globalSession, file);
+        PortableDataService.ExportMaster(file.FilePath, data, companySession);
+        _ = globalPath;
+        _ = catalog;
     }
 }

@@ -54,6 +54,7 @@ internal static class PortableDataService
         MasterSession session,
         out PortableExportInfo info)
     {
+        DeviceLimitPolicy.RequireWithinLimit(data.MasterAccess, data);
         if (string.IsNullOrWhiteSpace(session.MasterKey))
         {
             // Legacy unencrypted company files remain usable during migration.
@@ -69,6 +70,9 @@ internal static class PortableDataService
             Format = AccountEnvelopeFormat,
             FormatVersion = AccountEnvelopeVersion,
             MasterId = data.MasterAccess.MasterId,
+            LicenseId = data.MasterAccess.LicenseId,
+            LicenseName = data.MasterAccess.LicenseName,
+            DeviceLimit = data.MasterAccess.DeviceLimit,
             Users = access.Users,
             PayloadBase64 = Convert.ToBase64String(payload)
         };
@@ -166,6 +170,9 @@ internal static class PortableDataService
             var access = new MasterAccessControl
             {
                 MasterId = envelope.MasterId,
+                LicenseId = envelope.LicenseId,
+                LicenseName = envelope.LicenseName,
+                DeviceLimit = envelope.DeviceLimit,
                 Users = envelope.Users ?? []
             };
             DataStore.Normalize(new AppData { MasterAccess = access });
@@ -234,6 +241,9 @@ internal static class PortableDataService
         public string Format { get; set; } = string.Empty;
         public int FormatVersion { get; set; }
         public Guid MasterId { get; set; }
+        public Guid LicenseId { get; set; }
+        public string LicenseName { get; set; } = string.Empty;
+        public int DeviceLimit { get; set; }
         public List<MasterUserRecord>? Users { get; set; }
         public string PayloadBase64 { get; set; } = string.Empty;
     }
