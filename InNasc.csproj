@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\InNasc.ico</ApplicationIcon>
     <AssemblyName>InNasc</AssemblyName>
     <RootNamespace>InNasc</RootNamespace>
-    <Version>5.2.4</Version>
+    <Version>5.3.0</Version>
     <Authors>InN8 Labs</Authors>
     <Copyright>Copyright © 2026 InN8 Labs</Copyright>
     <Product>InNasc</Product>
@@ -29,6 +29,9 @@
     <Compile Remove="InNascGlobalSetupForm.cs" />
     <Compile Remove="InNascGlobalUserEditorForm.cs" />
     <Compile Remove="InNascMembershipForm.cs" />
+    <Compile Remove="InNascLicenseSyncContract.cs" />
+    <Compile Remove="InNascLicenseAdminForms.cs" />
+    <Compile Remove="GlobalAdminUpdateService.cs" />
     <EmbeddedResource Include="Assets\InNasc.ico"
                       LogicalName="InNasc.Assets.InNasc.ico" />
     <EmbeddedResource Include="Assets\InNascLogoLight.png"

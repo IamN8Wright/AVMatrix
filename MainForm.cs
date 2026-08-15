@@ -24,6 +24,7 @@ public sealed class MainForm : Form
     private readonly Label _statusLabel = new();
     private readonly Label _signedInLabel = new();
     private readonly Label _workspaceCheckoutStatus = new();
+    private readonly Label _licenseWarning = new();
     private readonly ToolTip _toolTip = new();
     private readonly Button _checkButton;
     private Button _workspaceCheckoutButton = null!;
@@ -342,8 +343,18 @@ public sealed class MainForm : Form
             AutoSize = true,
             ForeColor = UiTheme.Muted,
             Font = UiTheme.Font(8.7f),
-            Location = new Point(26, 62)
+            Location = new Point(26, 56)
         });
+        _licenseWarning.AutoSize = false;
+        _licenseWarning.Location = new Point(26, 78);
+        _licenseWarning.Size = new Size(980, 26);
+        _licenseWarning.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        _licenseWarning.ForeColor = UiTheme.Red;
+        _licenseWarning.Font = UiTheme.Font(8.8f, FontStyle.Bold);
+        _licenseWarning.Visible = false;
+        top.Controls.Add(_licenseWarning);
+        top.Resize += (_, _) =>
+            _licenseWarning.Width = Math.Max(240, top.ClientSize.Width - 52);
         return top;
     }
 
@@ -1028,6 +1039,7 @@ public sealed class MainForm : Form
 
     private void ShowWelcomePage()
     {
+        RefreshLicenseWarning();
         if (MasterSessionContext.Current is null)
         {
             ShowMasterWelcomePage();
@@ -2010,6 +2022,7 @@ public sealed class MainForm : Form
     private void AddClient()
     {
         if (!EnsureWorkspaceWritable()) return;
+        if (!EnsureNewClientAllowed()) return;
         var active = MasterSessionContext.Current;
         if (active is not null &&
             !MasterAccessService.HasAllClientAccess(_data.MasterAccess, active.Session))
@@ -3078,6 +3091,34 @@ public sealed class MainForm : Form
             .Select(character => invalid.Contains(character) ? '-' : character)
             .ToArray()).Trim(' ', '.', '-');
         return string.IsNullOrWhiteSpace(cleaned) ? "Client" : cleaned;
+    }
+
+    private bool EnsureNewClientAllowed()
+    {
+        try
+        {
+            DeviceLimitPolicy.RequireNewClientAllowed(_data.MasterAccess, _data);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is DeviceLimitExceededException or LicenseExpiredException)
+        {
+            MessageBox.Show(this,
+                exception.Message,
+                "License restriction",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            RefreshLicenseWarning();
+            return false;
+        }
+    }
+
+    private void RefreshLicenseWarning()
+    {
+        var warning = DeviceLimitPolicy.WarningText(_data.MasterAccess, _data);
+        _licenseWarning.Text = warning;
+        _licenseWarning.Visible =
+            warning.Length > 0 && MasterSessionContext.Current is not null;
     }
 
     private bool EnsureDeviceCapacity(int additionalDevices)

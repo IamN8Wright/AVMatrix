@@ -38,8 +38,39 @@ internal static class InNascCompanyGlobalAdminService
             Name = FirstNonBlank(summary.LicenseName, Path.GetFileNameWithoutExtension(fullPath), company.Name),
             FilePath = fullPath,
             CompanyKeyBase64 = companyKeyBase64,
-            DeviceLimit = summary.DeviceLimit
+            DeviceLimit = summary.DeviceLimit,
+            ExpiresUtc = summary.LicenseExpiresUtc
         };
+
+        var addedUserIds = new List<Guid>();
+        foreach (var source in imported.Data.MasterAccess.Users
+                     .Where(user => user.Enabled && !user.IsRecoveryAccount))
+        {
+            if (company.Users.Any(user => user.Id == source.Id ||
+                    string.Equals(user.Username, source.Username,
+                        StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var profile = new InNascCompanyUserRecord
+            {
+                Id = source.Id,
+                Username = source.Username,
+                DisplayName = source.DisplayName,
+                Role = source.Role,
+                PasswordSaltBase64 = source.PasswordSaltBase64,
+                PasswordHashBase64 = source.PasswordHashBase64,
+                PasswordIterations = source.PasswordIterations,
+                CompanyKeySaltBase64 = source.MasterKeySaltBase64,
+                HasAllClientAccess = source.Role == MasterUserRole.Owner || source.HasAllClientAccess,
+                ClientAccessIds = source.Role == MasterUserRole.Owner || source.HasAllClientAccess
+                    ? []
+                    : source.ClientAccessIds.Distinct().ToList(),
+                Enabled = true,
+                CreatedUtc = source.CreatedUtc
+            };
+            company.Users.Add(profile);
+            addedUserIds.Add(profile.Id);
+        }
+
         company.Files.Add(file);
         try
         {
@@ -50,6 +81,7 @@ internal static class InNascCompanyGlobalAdminService
         catch
         {
             company.Files.Remove(file);
+            company.Users.RemoveAll(user => addedUserIds.Contains(user.Id));
             try { File.WriteAllBytes(fullPath, originalBytes); } catch { }
             throw;
         }
@@ -79,6 +111,31 @@ internal static class InNascCompanyGlobalAdminService
         catch
         {
             company.Name = previous;
+            TryApplyAll(company);
+            throw;
+        }
+    }
+
+    public static void RenameLicense(
+        string globalPath,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        InNascCompanyRecord company,
+        InNascCompanyFileRecord file,
+        string newName)
+    {
+        RequireAdmin(session);
+        var previous = file.Name;
+        InNascGlobalCoreService.RenameLicense(
+            globalPath, catalog, session, company.Id, file.Id, newName);
+        try
+        {
+            ApplyToFile(company, file);
+        }
+        catch
+        {
+            file.Name = previous;
+            InNascGlobalCoreService.Save(globalPath, catalog, session);
             TryApplyAll(company);
             throw;
         }
@@ -116,7 +173,8 @@ internal static class InNascCompanyGlobalAdminService
             file.Name,
             file.Id,
             file.DeviceLimit,
-            company.LogoBase64);
+            company.LogoBase64,
+            file.ExpiresUtc);
     }
 
     private static void ApplyAll(InNascCompanyRecord company)

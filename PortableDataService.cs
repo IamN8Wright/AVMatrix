@@ -20,9 +20,14 @@ internal static class PortableDataService
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static PortableExportInfo Export(string path, AppData data, string? password = null)
+    public static PortableExportInfo Export(
+        string path,
+        AppData data,
+        string? password = null,
+        PortableBackupOptions? backupOptions = null)
     {
-        var bytes = ExportBytes(data, password, out var info);
+        var exportData = backupOptions is null ? data : CreateBackupSnapshot(data, backupOptions);
+        var bytes = ExportBytes(exportData, password, out var info);
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath) ?? Path.GetTempPath();
         Directory.CreateDirectory(directory);
@@ -44,7 +49,40 @@ internal static class PortableDataService
         AppData data,
         MasterSession session)
     {
+        AccountEnvelope? existingEnvelope = null;
+        if (File.Exists(path))
+        {
+            try
+            {
+                if (TryReadAccountEnvelope(File.ReadAllBytes(path), out var existing))
+                    existingEnvelope = existing;
+            }
+            catch
+            {
+                existingEnvelope = null;
+            }
+        }
+
         var bytes = ExportMasterBytes(data, session, out var info);
+        if (existingEnvelope is not null && TryReadAccountEnvelope(bytes, out var nextEnvelope))
+        {
+            // These fields are controlled by Global Admin. A normal InNasc save may
+            // update the encrypted payload but must not erase company branding or licensing.
+            nextEnvelope.CompanyName = existingEnvelope.CompanyName;
+            nextEnvelope.LicenseId = existingEnvelope.LicenseId;
+            nextEnvelope.LicenseName = existingEnvelope.LicenseName;
+            nextEnvelope.DeviceLimit = existingEnvelope.DeviceLimit;
+            nextEnvelope.LicenseExpiresUtc = existingEnvelope.LicenseExpiresUtc;
+            nextEnvelope.CompanyLogoBase64 = existingEnvelope.CompanyLogoBase64;
+            bytes = JsonSerializer.SerializeToUtf8Bytes(nextEnvelope, Options);
+
+            data.ProjectName = FirstNonBlank(existingEnvelope.CompanyName, data.ProjectName);
+            data.MasterAccess.LicenseId = existingEnvelope.LicenseId;
+            data.MasterAccess.LicenseName = existingEnvelope.LicenseName;
+            data.MasterAccess.DeviceLimit = existingEnvelope.DeviceLimit;
+            data.MasterAccess.LicenseExpiresUtc = existingEnvelope.LicenseExpiresUtc;
+        }
+
         WriteAtomically(path, bytes);
         return info;
     }
@@ -54,7 +92,6 @@ internal static class PortableDataService
         MasterSession session,
         out PortableExportInfo info)
     {
-        DeviceLimitPolicy.RequireWithinLimit(data.MasterAccess, data);
         if (string.IsNullOrWhiteSpace(session.MasterKey))
         {
             // Legacy unencrypted company files remain usable during migration.
@@ -76,6 +113,7 @@ internal static class PortableDataService
             LicenseId = data.MasterAccess.LicenseId,
             LicenseName = data.MasterAccess.LicenseName,
             DeviceLimit = data.MasterAccess.DeviceLimit,
+            LicenseExpiresUtc = data.MasterAccess.LicenseExpiresUtc,
             Users = access.Users,
             PayloadBase64 = Convert.ToBase64String(payload)
         };
@@ -161,6 +199,7 @@ internal static class PortableDataService
                 accountEnvelope.CompanyName,
                 data.MasterAccess.LicenseName);
             data.MasterAccess.DeviceLimit = accountEnvelope.DeviceLimit;
+            data.MasterAccess.LicenseExpiresUtc = accountEnvelope.LicenseExpiresUtc;
             data.MasterAccess.Users = accountEnvelope.Users ?? data.MasterAccess.Users;
         }
         DataStore.Normalize(data);
@@ -192,6 +231,7 @@ internal static class PortableDataService
                 LicenseId = envelope.LicenseId,
                 LicenseName = envelope.LicenseName,
                 DeviceLimit = envelope.DeviceLimit,
+                LicenseExpiresUtc = envelope.LicenseExpiresUtc,
                 Users = envelope.Users ?? []
             };
             DataStore.Normalize(new AppData { MasterAccess = access });
@@ -218,7 +258,8 @@ internal static class PortableDataService
                 FirstNonBlank(envelope.LicenseName, companyName),
                 envelope.DeviceLimit,
                 true,
-                envelope.CompanyLogoBase64);
+                envelope.CompanyLogoBase64,
+                envelope.LicenseExpiresUtc);
         }
 
         var data = ImportBytes(contents, legacyPassword).Data;
@@ -233,6 +274,26 @@ internal static class PortableDataService
         string path,
         string? legacyPassword = null) =>
         ReadCompanySummary(File.ReadAllBytes(path), legacyPassword);
+
+    private static AppData CreateBackupSnapshot(AppData source, PortableBackupOptions options)
+    {
+        var clone = JsonSerializer.Deserialize<AppData>(
+            JsonSerializer.SerializeToUtf8Bytes(source, Options), Options)
+            ?? throw new InvalidOperationException("The backup snapshot could not be created.");
+        foreach (var equipment in clone.Clients.SelectMany(client => client.Locations)
+                     .SelectMany(location => location.Rooms)
+                     .SelectMany(room => room.Equipment))
+        {
+            if (!options.IncludeDeviceCredentials)
+            {
+                equipment.Username = string.Empty;
+                equipment.Password = string.Empty;
+            }
+            if (!options.IncludeConfigurationFiles)
+                equipment.ConfigurationFiles.Clear();
+        }
+        return clone;
+    }
 
     private static string FirstNonBlank(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
@@ -299,6 +360,7 @@ internal static class PortableDataService
         public Guid LicenseId { get; set; }
         public string LicenseName { get; set; } = string.Empty;
         public int DeviceLimit { get; set; }
+        public DateTime? LicenseExpiresUtc { get; set; }
         public string CompanyLogoBase64 { get; set; } = string.Empty;
         public List<MasterUserRecord>? Users { get; set; }
         public string PayloadBase64 { get; set; } = string.Empty;
@@ -310,7 +372,8 @@ internal sealed record CompanyFileSummary(
     string LicenseName,
     int DeviceLimit,
     bool IsLicensed,
-    string CompanyLogoBase64 = "");
+    string CompanyLogoBase64 = "",
+    DateTime? LicenseExpiresUtc = null);
 
 internal sealed record PortableImport(
     AppData Data,
@@ -346,3 +409,7 @@ internal sealed class MasterLoginRequiredException : InvalidOperationException
     {
     }
 }
+
+internal sealed record PortableBackupOptions(
+    bool IncludeDeviceCredentials = true,
+    bool IncludeConfigurationFiles = true);

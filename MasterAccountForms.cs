@@ -474,7 +474,7 @@ internal sealed class MasterUserManagementForm : Form
     private void RefreshUsers(Guid? selectId = null)
     {
         _users.Items.Clear();
-        foreach (var user in ResultAccess.Users.OrderBy(user => user.Username, StringComparer.OrdinalIgnoreCase))
+        foreach (var user in ResultAccess.Users.Where(user => !user.IsRecoveryAccount).OrderBy(user => user.Username, StringComparer.OrdinalIgnoreCase))
         {
             var item = new ListViewItem(user.Username) { Tag = user };
             item.SubItems.Add(user.DisplayName);

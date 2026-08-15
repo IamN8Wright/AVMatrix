@@ -93,8 +93,18 @@ internal sealed class InNascCompanyFileRecord
 
     // Zero means Unlimited. Positive values are hard caps on equipment records.
     public int DeviceLimit { get; set; } = 250;
+    public DateTime? ExpiresUtc { get; set; }
+    public InNascCompanyUserRecord? RecoveryUser { get; set; }
+    public DateTime? LastCatalogSyncUtc { get; set; }
+    public int LastObservedDeviceCount { get; set; }
+    public string LastObservedRevisionId { get; set; } = string.Empty;
+    // Local reconciliation is active now. This state is intentionally transport-neutral
+    // so a later release can send license snapshots through an authenticated service.
+    public string RemoteSyncState { get; set; } = "LocalOnly";
     public bool Enabled { get; set; } = true;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    public bool RecoveryCredentialReady => RecoveryUser?.CredentialReady == true;
 }
 
 internal sealed class InNascCompanyUserRecord

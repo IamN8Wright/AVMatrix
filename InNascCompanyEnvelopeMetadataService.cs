@@ -16,7 +16,30 @@ internal static class InNascCompanyEnvelopeMetadataService
         string licenseName,
         Guid licenseId,
         int deviceLimit,
-        string? companyLogoBase64)
+        string? companyLogoBase64) =>
+        ApplyCore(path, companyName, licenseName, licenseId, deviceLimit,
+            companyLogoBase64, null, preserveExistingExpiration: true);
+
+    public static void Apply(
+        string path,
+        string companyName,
+        string licenseName,
+        Guid licenseId,
+        int deviceLimit,
+        string? companyLogoBase64,
+        DateTime? licenseExpiresUtc) =>
+        ApplyCore(path, companyName, licenseName, licenseId, deviceLimit,
+            companyLogoBase64, licenseExpiresUtc, preserveExistingExpiration: false);
+
+    private static void ApplyCore(
+        string path,
+        string companyName,
+        string licenseName,
+        Guid licenseId,
+        int deviceLimit,
+        string? companyLogoBase64,
+        DateTime? licenseExpiresUtc,
+        bool preserveExistingExpiration)
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = File.ReadAllBytes(fullPath);
@@ -44,6 +67,10 @@ internal static class InNascCompanyEnvelopeMetadataService
         root["LicenseId"] = JsonValue.Create(licenseId);
         root["DeviceLimit"] = JsonValue.Create(deviceLimit);
         root["CompanyLogoBase64"] = JsonValue.Create(companyLogoBase64?.Trim() ?? string.Empty);
+        if (!preserveExistingExpiration)
+            root["LicenseExpiresUtc"] = licenseExpiresUtc is null
+                ? null
+                : JsonValue.Create(licenseExpiresUtc.Value.ToUniversalTime());
 
         var updated = JsonSerializer.SerializeToUtf8Bytes(root, new JsonSerializerOptions
         {

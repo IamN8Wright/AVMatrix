@@ -99,7 +99,7 @@ internal static class MasterAccessService
         var user = RequiredUser(access, userId);
         if (user.Role == MasterUserRole.Owner &&
             (role != MasterUserRole.Owner || !enabled) &&
-            access.Users.Count(candidate => candidate.Enabled &&
+            access.Users.Count(candidate => candidate.Enabled && !candidate.IsRecoveryAccount &&
                 candidate.Role == MasterUserRole.Owner) <= 1)
             throw new InvalidOperationException("A master must keep at least one enabled Owner account.");
         user.DisplayName = string.IsNullOrWhiteSpace(displayName)
@@ -162,6 +162,9 @@ internal static class MasterAccessService
         string newPassword)
     {
         var user = ValidateSession(access, session);
+        if (user.IsRecoveryAccount)
+            throw new MasterAuthorizationException(
+                "The recovery password is managed only in InNasc Global Admin.");
         if (!VerifyPassword(user, currentPassword))
             throw new MasterAuthorizationException("The current password is not valid.");
         ValidatePassword(newPassword);
@@ -178,7 +181,7 @@ internal static class MasterAccessService
         if (user.Id == session.UserId)
             throw new InvalidOperationException("You cannot delete the account currently signed in.");
         if (user.Role == MasterUserRole.Owner &&
-            access.Users.Count(candidate => candidate.Enabled &&
+            access.Users.Count(candidate => candidate.Enabled && !candidate.IsRecoveryAccount &&
                 candidate.Role == MasterUserRole.Owner) <= 1)
             throw new InvalidOperationException("A master must keep at least one enabled Owner account.");
         access.Users.Remove(user);
@@ -293,7 +296,8 @@ internal static class MasterAccessService
 
     public static void ValidateForSave(MasterAccessControl access)
     {
-        if (!access.Users.Any(user => user.Enabled && user.Role == MasterUserRole.Owner))
+        if (!access.Users.Any(user => user.Enabled &&
+                user.Role == MasterUserRole.Owner))
             throw new InvalidOperationException("A master must keep at least one enabled Owner account.");
         var duplicate = access.Users.GroupBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);

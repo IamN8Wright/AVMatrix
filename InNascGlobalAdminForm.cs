@@ -62,6 +62,14 @@ internal sealed class InNascGlobalAdminForm : Form
         panel.Controls.Add(InNascGlobalSetupForm.Description(
             "Create companies, issue .nasc licenses, set device tiers, and manage company users.",
             76, 43, 650, 30));
+        var update = UiTheme.SecondaryButton("Check updates");
+        update.AutoSize = false;
+        update.Size = new Size(120, 38);
+        update.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        update.Click += async (_, _) =>
+            await GlobalAdminUpdateService.CheckAndPromptAsync(this, false);
+        panel.Controls.Add(update);
+
         var admins = UiTheme.SecondaryButton("Global Admins");
         admins.AutoSize = false;
         admins.Size = new Size(130, 38);
@@ -88,6 +96,7 @@ internal sealed class InNascGlobalAdminForm : Form
             create.Left = panel.ClientSize.Width - create.Width;
             migrate.Left = create.Left - migrate.Width - 10;
             admins.Left = migrate.Left - admins.Width - 10;
+            update.Left = admins.Left - update.Width - 10;
         };
         return panel;
     }
@@ -135,7 +144,7 @@ internal sealed class InNascGlobalAdminForm : Form
         close.Size = new Size(86, 36);
         close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         close.Location = new Point(1120, 7);
-        close.DialogResult = DialogResult.OK;
+        close.Click += (_, _) => Close();
         panel.Controls.Add(close);
         panel.Resize += (_, _) => close.Left = panel.ClientSize.Width - close.Width;
         return panel;
@@ -276,10 +285,19 @@ internal sealed class InNascGlobalAdminForm : Form
     {
         using var form = new InNascCompanyCreateForm();
         if (form.ShowDialog(this) != DialogResult.OK) return;
+        using var expiration = new InNascLicenseExpirationForm();
+        if (expiration.ShowDialog(this) != DialogResult.OK) return;
+        var recoveryPassword = InNascRecoveryPasswordForm.Prompt(this, form.EnteredCompanyName);
+        if (recoveryPassword is null) return;
         try
         {
             var company = InNascGlobalCoreService.CreateCompany(
-                _globalPath, _catalog, _session, form.EnteredCompanyName, form.CompanyPath, form.DeviceLimit);
+                _globalPath, _catalog, _session,
+                form.EnteredCompanyName,
+                form.CompanyPath,
+                form.DeviceLimit,
+                expiration.ExpiresUtc,
+                recoveryPassword);
             _status.Text = $"Created {company.Name} with a {DeviceLimitPolicy.LimitText(form.DeviceLimit)} tier.";
             RefreshCompanies();
             OpenCompany(company);
@@ -456,7 +474,11 @@ internal sealed class InNascCompanyAdminForm : Form
         close.AutoSize = false;
         close.Size = new Size(144, 38);
         close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        close.DialogResult = DialogResult.OK;
+        close.Click += (_, _) =>
+        {
+            DialogResult = DialogResult.OK;
+            Close();
+        };
         panel.Controls.Add(close);
         panel.Resize += (_, _) =>
         {
@@ -471,22 +493,44 @@ internal sealed class InNascCompanyAdminForm : Form
     {
         var card = new RoundedPanel { Dock = DockStyle.Fill, Padding = new Padding(18) };
         card.Controls.Add(InNascGlobalSetupForm.TitleLabel(".nasc licenses and device tiers", 18, 14, 13, true));
-        var grant = Button("+ Grant .nasc", 18, GrantFile, true);
-        var import = Button("Import .nasc", 144, ImportFile);
-        var limit = Button("Change tier", 282, ChangeLimit);
-        var sync = Button("Sync selected", 420, SyncSelectedFile);
-        var remove = Button("Remove grant", 558, RemoveFile);
-        card.Controls.AddRange([grant, import, limit, sync, remove]);
+        var tools = new FlowLayoutPanel
+        {
+            Location = new Point(18, 48),
+            Height = 76,
+            Width = 1080,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            WrapContents = true,
+            Margin = Padding.Empty
+        };
+        tools.Controls.AddRange([
+            ToolButton("+ Grant .nasc", GrantFile, true),
+            ToolButton("Import / reconcile", ImportFile),
+            ToolButton("Rename license", RenameSelectedLicense),
+            ToolButton("Device tier", ChangeLimit),
+            ToolButton("Expiration", ChangeExpiration),
+            ToolButton("Root recovery", ChangeRecoveryPassword),
+            ToolButton("Sync selected", SyncSelectedFile),
+            ToolButton("Remove grant", RemoveFile)]);
+        card.Controls.Add(tools);
+
         ConfigureList(_licenses);
-        _licenses.Location = new Point(18, 92);
+        _licenses.Location = new Point(18, 128);
         _licenses.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _licenses.Size = new Size(1040, 130);
-        _licenses.Columns.Add("License", 190);
-        _licenses.Columns.Add("Devices", 90);
-        _licenses.Columns.Add("Tier", 130);
-        _licenses.Columns.Add("File", 560);
+        _licenses.Size = new Size(1040, 110);
+        _licenses.Columns.Add("License", 160);
+        _licenses.Columns.Add("Devices", 72);
+        _licenses.Columns.Add("Tier", 100);
+        _licenses.Columns.Add("Expires", 110);
+        _licenses.Columns.Add("Recovery", 92);
+        _licenses.Columns.Add("File", 500);
         card.Controls.Add(_licenses);
-        card.Resize += (_, _) => _licenses.Size = new Size(card.ClientSize.Width - 36, card.ClientSize.Height - 108);
+        card.Resize += (_, _) =>
+        {
+            tools.Width = card.ClientSize.Width - 36;
+            _licenses.Size = new Size(
+                card.ClientSize.Width - 36,
+                Math.Max(60, card.ClientSize.Height - 144));
+        };
         return card;
     }
 
@@ -497,12 +541,20 @@ internal sealed class InNascCompanyAdminForm : Form
         card.Controls.Add(InNascGlobalSetupForm.Description(
             "These accounts open this company's .nasc files only. They are separate from Global Admin accounts.",
             18, 42, 720, 26));
-        var add = Button("+ Add user", 18, AddUser, true);
-        var edit = Button("Edit access", 128, EditUser);
-        var reset = Button("Reset password", 242, ResetUserPassword);
-        var delete = Button("Delete user", 390, DeleteUser);
-        add.Top = edit.Top = reset.Top = delete.Top = 72;
-        card.Controls.AddRange([add, edit, reset, delete]);
+        var userTools = new FlowLayoutPanel
+        {
+            Location = new Point(18, 72),
+            Height = 40,
+            Width = 760,
+            WrapContents = false,
+            Margin = Padding.Empty
+        };
+        userTools.Controls.AddRange([
+            ToolButton("+ Add user", AddUser, true),
+            ToolButton("Edit access", EditUser),
+            ToolButton("Reset password", ResetUserPassword),
+            ToolButton("Delete user", DeleteUser)]);
+        card.Controls.Add(userTools);
         ConfigureList(_users);
         _users.Location = new Point(18, 118);
         _users.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -526,12 +578,12 @@ internal sealed class InNascCompanyAdminForm : Form
         return panel;
     }
 
-    private Button Button(string text, int left, Action action, bool primary = false)
+    private Button ToolButton(string text, Action action, bool primary = false)
     {
         var button = primary ? UiTheme.PrimaryButton(text) : UiTheme.SecondaryButton(text);
         button.AutoSize = false;
-        button.Size = new Size(primary ? 110 : 128, 34);
-        button.Location = new Point(left, 50);
+        button.Size = new Size(124, 34);
+        button.Margin = new Padding(0, 0, 10, 6);
         button.Click += (_, _) => action();
         return button;
     }
@@ -557,6 +609,8 @@ internal sealed class InNascCompanyAdminForm : Form
             var item = new ListViewItem(file.Name);
             item.SubItems.Add(devices.ToString("N0"));
             item.SubItems.Add(DeviceLimitPolicy.LimitText(file.DeviceLimit));
+            item.SubItems.Add(DeviceLimitPolicy.ExpirationText(file.ExpiresUtc));
+            item.SubItems.Add(file.RecoveryCredentialReady ? "Ready" : "Set root");
             item.SubItems.Add(file.FilePath);
             item.Tag = file.Id;
             _licenses.Items.Add(item);
@@ -570,7 +624,9 @@ internal sealed class InNascCompanyAdminForm : Form
             var item = new ListViewItem(user.DisplayName);
             item.SubItems.Add(user.Username);
             item.SubItems.Add(RoleText(user.Role));
-            item.SubItems.Add(user.CredentialReady ? "Ready" : "Password reset needed");
+            item.SubItems.Add(user.CredentialReady
+                ? "Ready"
+                : "Synced from .nasc - reset password to manage");
             item.Tag = user.Id;
             if (!user.CredentialReady) item.ForeColor = UiTheme.Amber;
             _users.Items.Add(item);
@@ -599,11 +655,19 @@ internal sealed class InNascCompanyAdminForm : Form
     {
         using var form = new InNascCompanyFileForm(_company.Name);
         if (form.ShowDialog(this) != DialogResult.OK) return;
+        using var expiration = new InNascLicenseExpirationForm();
+        if (expiration.ShowDialog(this) != DialogResult.OK) return;
+        var recoveryPassword = InNascRecoveryPasswordForm.Prompt(this, form.FileName);
+        if (recoveryPassword is null) return;
         Try("Grant .nasc", () =>
         {
             var file = InNascGlobalCoreService.AddCompanyFile(
                 _globalPath, _catalog, _session, _company.Id,
-                form.FileName, form.CompanyPath, form.DeviceLimit);
+                form.FileName,
+                form.CompanyPath,
+                form.DeviceLimit,
+                expiration.ExpiresUtc,
+                recoveryPassword);
             InNascCompanyGlobalAdminService.ApplyToFile(_company, file);
             RefreshAll(file.Id);
             _status.Text = $"Granted {file.Name} with a {DeviceLimitPolicy.LimitText(file.DeviceLimit)} tier.";
@@ -622,6 +686,36 @@ internal sealed class InNascCompanyAdminForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
+            var fullImportPath = Path.GetFullPath(dialog.FileName);
+            var linkedHere = _company.Files.FirstOrDefault(file =>
+                file.Enabled && string.Equals(file.FilePath, fullImportPath,
+                    StringComparison.OrdinalIgnoreCase));
+            var linkedElsewhere = _catalog.Companies
+                .Where(candidate => candidate.Id != _company.Id)
+                .SelectMany(candidate => candidate.Files)
+                .FirstOrDefault(file => file.Enabled &&
+                    string.Equals(file.FilePath, fullImportPath,
+                        StringComparison.OrdinalIgnoreCase));
+            if (linkedElsewhere is not null)
+                throw new InvalidOperationException(
+                    "That .nasc file is already assigned to another company in this Global Admin catalog.");
+            if (linkedHere is not null)
+            {
+                if (!linkedHere.RecoveryCredentialReady)
+                {
+                    var rootPassword = InNascRecoveryPasswordForm.Prompt(this, linkedHere.Name);
+                    if (rootPassword is null) return;
+                    InNascGlobalCoreService.SetRecoveryPassword(
+                        _globalPath, _catalog, _session, _company.Id,
+                        linkedHere.Id, rootPassword);
+                }
+                InNascCompanyAccessSyncService.ReconcileFile(
+                    _globalPath, _catalog, _session, _company, linkedHere);
+                RefreshAll(linkedHere.Id);
+                _status.Text = $"Reconciled {linkedHere.Name}: pulled current .nasc users/access and republished license metadata, logo, tier, expiration, and recovery access.";
+                return;
+            }
+
             var bytes = File.ReadAllBytes(dialog.FileName);
             if (!PortableDataService.IsAccountProtected(bytes))
                 throw new InvalidDataException(
@@ -642,8 +736,15 @@ internal sealed class InNascCompanyAdminForm : Form
                 if (companySession is null) return;
                 companyKey = companySession.MasterKey;
             }
+            var recoveryPassword = InNascRecoveryPasswordForm.Prompt(
+                this, Path.GetFileNameWithoutExtension(dialog.FileName));
+            if (recoveryPassword is null) return;
             var file = InNascCompanyGlobalAdminService.ImportExisting(
                 _globalPath, _catalog, _session, _company, dialog.FileName, companyKey!);
+            InNascGlobalCoreService.SetRecoveryPassword(
+                _globalPath, _catalog, _session, _company.Id, file.Id, recoveryPassword);
+            InNascCompanyAccessSyncService.ReconcileFile(
+                _globalPath, _catalog, _session, _company, file);
             RefreshAll(file.Id);
             _status.Text = $"Imported {file.Name}. Existing company logins were preserved; its embedded company name now matches {_company.Name}.";
         }
@@ -722,6 +823,66 @@ internal sealed class InNascCompanyAdminForm : Form
         parent.Controls.SetChildIndex(replacement, index);
     }
 
+    private void RenameSelectedLicense()
+    {
+        var file = SelectedFile();
+        if (file is null)
+        {
+            SelectMessage("Select a .nasc license first.");
+            return;
+        }
+        var name = InputDialog.Show(this, "Rename license", "License name", file.Name);
+        if (name is null || string.Equals(name.Trim(), file.Name, StringComparison.Ordinal)) return;
+        Try("Rename license", () =>
+        {
+            InNascCompanyGlobalAdminService.RenameLicense(
+                _globalPath, _catalog, _session, _company, file, name);
+            RefreshAll(file.Id);
+            _status.Text = $"Renamed the selected license to {file.Name}.";
+        });
+    }
+
+    private void ChangeExpiration()
+    {
+        var file = SelectedFile();
+        if (file is null)
+        {
+            SelectMessage("Select a .nasc license first.");
+            return;
+        }
+        using var form = new InNascLicenseExpirationForm(file.ExpiresUtc);
+        if (form.ShowDialog(this) != DialogResult.OK) return;
+        Try("License expiration", () =>
+        {
+            InNascGlobalCoreService.SetLicenseExpiration(
+                _globalPath, _catalog, _session, _company.Id, file.Id, form.ExpiresUtc);
+            InNascCompanyGlobalAdminService.ApplyToFile(_company, file);
+            RefreshAll(file.Id);
+            _status.Text = $"Expiration for {file.Name}: {DeviceLimitPolicy.ExpirationText(file.ExpiresUtc)}.";
+        });
+    }
+
+    private void ChangeRecoveryPassword()
+    {
+        var file = SelectedFile();
+        if (file is null)
+        {
+            SelectMessage("Select a .nasc license first.");
+            return;
+        }
+        var password = InNascRecoveryPasswordForm.Prompt(this, file.Name);
+        if (password is null) return;
+        Try("Root recovery", () =>
+        {
+            InNascGlobalCoreService.SetRecoveryPassword(
+                _globalPath, _catalog, _session, _company.Id, file.Id, password);
+            InNascCompanyAccessSyncService.SyncFile(
+                _globalPath, _catalog, _session, _company, file);
+            RefreshAll(file.Id);
+            _status.Text = $"Reset the hidden root recovery credential for {file.Name}.";
+        });
+    }
+
     private void ChangeLimit()
     {
         var file = SelectedFile();
@@ -743,10 +904,18 @@ internal sealed class InNascCompanyAdminForm : Form
     {
         var file = SelectedFile();
         if (file is null) { SelectMessage("Select a .nasc license first."); return; }
+        if (!file.RecoveryCredentialReady)
+        {
+            var password = InNascRecoveryPasswordForm.Prompt(this, file.Name);
+            if (password is null) return;
+            InNascGlobalCoreService.SetRecoveryPassword(
+                _globalPath, _catalog, _session, _company.Id, file.Id, password);
+        }
         Try("Sync .nasc", () =>
         {
-            InNascCompanyAccessSyncService.SyncFile(_globalPath, _catalog, _session, _company, file);
-            _status.Text = $"Published company users and the current device tier to {file.Name}.";
+            InNascCompanyAccessSyncService.ReconcileFile(
+                _globalPath, _catalog, _session, _company, file);
+            _status.Text = $"Reconciled {file.Name}: pulled current .nasc users/access and republished license name, tier, expiration, logo, and recovery access.";
             RefreshAll(file.Id);
         });
     }

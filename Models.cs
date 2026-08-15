@@ -66,6 +66,7 @@ public sealed class MasterUserRecord
     public bool HasAllClientAccess { get; set; } = true;
     public List<Guid> ClientAccessIds { get; set; } = [];
     public bool Enabled { get; set; } = true;
+    public bool IsRecoveryAccount { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
@@ -87,6 +88,7 @@ public sealed class MasterAccessControl
     public Guid LicenseId { get; set; }
     public string LicenseName { get; set; } = string.Empty;
     public int DeviceLimit { get; set; }
+    public DateTime? LicenseExpiresUtc { get; set; }
     public List<MasterUserRecord> Users { get; set; } = [];
     public List<ClientCheckoutRecord> Checkouts { get; set; } = [];
     public List<ClientSubmatrixReference> ClientSubmatrices { get; set; } = [];
