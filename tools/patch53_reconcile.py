@@ -1,14 +1,5 @@
 from pathlib import Path
 
-
-def patch(path, old, new, label, count=1):
-    p = Path(path)
-    s = p.read_text(encoding="utf-8")
-    if old not in s:
-        raise SystemExit(f"Missing reconcile patch anchor: {label}")
-    s = s.replace(old, new, count)
-    p.write_text(s, encoding="utf-8")
-
 # Preserve the established SyncFile/SyncCompany meaning: Global Admin is authoritative
 # and publishes its current roles/password resets. ReconcileFile is the explicit two-way
 # operation that first pulls the current .nasc user roster/access levels, then republishes.
@@ -68,6 +59,7 @@ p.write_text(s, encoding="utf-8")
 # In the Global Admin UI, only explicit reconcile operations pull from the .nasc.
 p = Path("InNascGlobalAdminForm.cs")
 s = p.read_text(encoding="utf-8")
+
 # Same-file Import / reconcile block is uniquely followed by RefreshAll(linkedHere.Id).
 old = '''                InNascCompanyAccessSyncService.SyncFile(
                     _globalPath, _catalog, _session, _company, linkedHere);
@@ -79,15 +71,17 @@ if old not in s:
     raise SystemExit("Missing same-file reconcile UI anchor")
 s = s.replace(old, new, 1)
 
-# New import immediately reconciles imported users/access.
-old = '''            InNascCompanyAccessSyncService.SyncFile(
+# New import immediately reconciles imported users/access after setting root recovery.
+old = '''            InNascGlobalCoreService.SetRecoveryPassword(
+                _globalPath, _catalog, _session, _company.Id, file.Id, recoveryPassword);
+            InNascCompanyAccessSyncService.SyncFile(
                 _globalPath, _catalog, _session, _company, file);
-            RefreshAll(file.Id);
-            _status.Text = $"Imported and registered {file.Name}. Existing company data and logins were preserved.";'''
-new = '''            InNascCompanyAccessSyncService.ReconcileFile(
+            RefreshAll(file.Id);'''
+new = '''            InNascGlobalCoreService.SetRecoveryPassword(
+                _globalPath, _catalog, _session, _company.Id, file.Id, recoveryPassword);
+            InNascCompanyAccessSyncService.ReconcileFile(
                 _globalPath, _catalog, _session, _company, file);
-            RefreshAll(file.Id);
-            _status.Text = $"Imported and reconciled {file.Name}. Existing company data and logins were preserved.";'''
+            RefreshAll(file.Id);'''
 if old not in s:
     raise SystemExit("Missing new-import reconcile UI anchor")
 s = s.replace(old, new, 1)
