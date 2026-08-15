@@ -1,30 +1,83 @@
 from pathlib import Path
 
-p = Path("InNascGlobalCoreService.cs")
+# Importing an existing .nasc should immediately seed its user identities/access levels
+# into the Global Admin catalog. Their current .nasc credentials remain authoritative
+# until Global Admin explicitly resets a password, because the original password cannot
+# be recovered from its verifier. Once represented in the catalog, normal delete/edit
+# semantics remain authoritative and deleted users are not resurrected.
+p = Path("InNascCompanyGlobalAdminService.cs")
 s = p.read_text(encoding="utf-8")
-old = '''        if (file.RecoveryUser?.CredentialReady == true)
+old = '''        var file = new InNascCompanyFileRecord
         {
-            var recovery = CreatePublishedCompanyUser(file.RecoveryUser, file.CompanyKeyBase64, globalKey);'''
-new = '''        // Preserve valid logins already present in an imported .nasc until Global Admin
-        // has explicitly reconciled them into the catalog. A catalog entry, including a
-        // disabled one, takes ownership of that identity so deletes still publish correctly.
-        if (existing is not null)
+            Name = FirstNonBlank(summary.LicenseName, Path.GetFileNameWithoutExtension(fullPath), company.Name),
+            FilePath = fullPath,
+            CompanyKeyBase64 = companyKeyBase64,
+            DeviceLimit = summary.DeviceLimit,
+            ExpiresUtc = summary.LicenseExpiresUtc
+        };
+        company.Files.Add(file);
+        try
         {
-            foreach (var preserved in existing.Users.Where(candidate => !candidate.IsRecoveryAccount))
+            ApplyToFile(company, file);'''
+new = '''        var file = new InNascCompanyFileRecord
+        {
+            Name = FirstNonBlank(summary.LicenseName, Path.GetFileNameWithoutExtension(fullPath), company.Name),
+            FilePath = fullPath,
+            CompanyKeyBase64 = companyKeyBase64,
+            DeviceLimit = summary.DeviceLimit,
+            ExpiresUtc = summary.LicenseExpiresUtc
+        };
+
+        var addedUserIds = new List<Guid>();
+        foreach (var source in imported.Data.MasterAccess.Users
+                     .Where(user => user.Enabled && !user.IsRecoveryAccount))
+        {
+            if (company.Users.Any(user => user.Id == source.Id ||
+                    string.Equals(user.Username, source.Username,
+                        StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var profile = new InNascCompanyUserRecord
             {
-                var represented = company.Users.Any(profile =>
-                    profile.Id == preserved.Id ||
-                    string.Equals(profile.Username, preserved.Username,
-                        StringComparison.OrdinalIgnoreCase));
-                if (!represented)
-                    access.Users.Add(ClonePublishedUser(preserved));
-            }
+                Id = source.Id,
+                Username = source.Username,
+                DisplayName = source.DisplayName,
+                Role = source.Role,
+                PasswordSaltBase64 = source.PasswordSaltBase64,
+                PasswordHashBase64 = source.PasswordHashBase64,
+                PasswordIterations = source.PasswordIterations,
+                CompanyKeySaltBase64 = source.MasterKeySaltBase64,
+                HasAllClientAccess = source.Role == MasterUserRole.Owner || source.HasAllClientAccess,
+                ClientAccessIds = source.Role == MasterUserRole.Owner || source.HasAllClientAccess
+                    ? []
+                    : source.ClientAccessIds.Distinct().ToList(),
+                Enabled = true,
+                CreatedUtc = source.CreatedUtc
+            };
+            company.Users.Add(profile);
+            addedUserIds.Add(profile.Id);
         }
 
-        if (file.RecoveryUser?.CredentialReady == true)
+        company.Files.Add(file);
+        try
         {
-            var recovery = CreatePublishedCompanyUser(file.RecoveryUser, file.CompanyKeyBase64, globalKey);'''
+            ApplyToFile(company, file);'''
 if old not in s:
-    raise SystemExit("Missing imported-login preservation anchor")
+    raise SystemExit("Missing ImportExisting user-seeding anchor")
+s = s.replace(old, new, 1)
+old = '''        catch
+        {
+            company.Files.Remove(file);
+            try { File.WriteAllBytes(fullPath, originalBytes); } catch { }
+            throw;
+        }'''
+new = '''        catch
+        {
+            company.Files.Remove(file);
+            company.Users.RemoveAll(user => addedUserIds.Contains(user.Id));
+            try { File.WriteAllBytes(fullPath, originalBytes); } catch { }
+            throw;
+        }'''
+if old not in s:
+    raise SystemExit("Missing ImportExisting rollback anchor")
 s = s.replace(old, new, 1)
 p.write_text(s, encoding="utf-8")
