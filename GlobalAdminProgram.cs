@@ -22,6 +22,13 @@ internal static class GlobalAdminProgram
             selection.GlobalPath,
             selection.Catalog,
             selection.Session);
+        var startupUpdateChecked = false;
+        admin.Shown += async (_, _) =>
+        {
+            if (startupUpdateChecked) return;
+            startupUpdateChecked = true;
+            await GlobalAdminUpdateService.CheckAndPromptAsync(admin, true);
+        };
         Application.Run(admin);
     }
 

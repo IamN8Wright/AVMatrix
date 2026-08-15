@@ -8,6 +8,7 @@ internal sealed class MasterWelcomeControl : UserControl
     private readonly Label _tier = new();
     private readonly Label _selection = new();
     private readonly Label _message = new();
+    private readonly Label _licenseWarning = new();
     private InNascBrandLogo _defaultLogo = null!;
     private PictureBox _companyLogo = null!;
     private readonly TextBox _username = new();
@@ -42,7 +43,7 @@ internal sealed class MasterWelcomeControl : UserControl
         // A 50 pt WinForms font needs more than a 70 px row at common Windows
         // DPI settings. Reserve the heading's full measured height so the
         // subtitle cannot overlap or clip the title.
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 278));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 174));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
         shell.Controls.Add(BuildHeading(), 0, 0);
@@ -71,7 +72,7 @@ internal sealed class MasterWelcomeControl : UserControl
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 5,
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
@@ -79,6 +80,7 @@ internal sealed class MasterWelcomeControl : UserControl
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        heading.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
         // Company logos are often horizontal wordmarks. Give them a wider
         // display area while keeping the default InNasc mark at its original size.
@@ -132,6 +134,13 @@ internal sealed class MasterWelcomeControl : UserControl
         _welcomeSubtitle.TextAlign = ContentAlignment.MiddleCenter;
         _welcomeSubtitle.Margin = Padding.Empty;
         heading.Controls.Add(_welcomeSubtitle, 0, 3);
+
+        _licenseWarning.Dock = DockStyle.Fill;
+        _licenseWarning.Font = UiTheme.Font(9, FontStyle.Bold);
+        _licenseWarning.ForeColor = UiTheme.Red;
+        _licenseWarning.TextAlign = ContentAlignment.MiddleCenter;
+        _licenseWarning.Visible = false;
+        heading.Controls.Add(_licenseWarning, 0, 4);
         return heading;
     }
 
@@ -349,6 +358,11 @@ internal sealed class MasterWelcomeControl : UserControl
     private void ShowCompanyIdentity(CompanyFileSummary? summary)
     {
         ShowCompanyLogo(summary?.CompanyLogoBase64);
+        _licenseWarning.Text = summary?.LicenseExpiresUtc is DateTime expiry &&
+                               expiry <= DateTime.UtcNow
+            ? $"LICENSE EXPIRED {DeviceLimitPolicy.ExpirationText(expiry)} - new client cards and devices are locked after sign-in."
+            : string.Empty;
+        _licenseWarning.Visible = _licenseWarning.Text.Length > 0;
         if (summary is null || string.IsNullOrWhiteSpace(summary.CompanyName))
         {
             _welcomeTitle.Text = "Welcome to InNasc";

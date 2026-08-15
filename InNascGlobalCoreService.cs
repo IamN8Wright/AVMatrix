@@ -156,7 +156,9 @@ internal static class InNascGlobalCoreService
         InNascGlobalSession session,
         string companyName,
         string companyPath,
-        int deviceLimit = 250)
+        int deviceLimit = 250,
+        DateTime? expiresUtc = null,
+        string? recoveryPassword = null)
     {
         RequireAdmin(catalog, session);
         var name = ValidateCompanyName(catalog, companyName);
@@ -166,6 +168,9 @@ internal static class InNascGlobalCoreService
         try
         {
             _ = AddCompanyFileCore(company, name, companyPath, deviceLimit);
+            company.Files[0].ExpiresUtc = expiresUtc?.ToUniversalTime();
+            if (!string.IsNullOrWhiteSpace(recoveryPassword))
+                SetRecoveryPasswordCore(company.Files[0], recoveryPassword, session.GlobalKey);
             WriteCompanyFile(globalPath, catalog, session, company, company.Files[0]);
             Save(globalPath, catalog, session);
             return company;
@@ -185,12 +190,17 @@ internal static class InNascGlobalCoreService
         Guid companyId,
         string fileName,
         string companyPath,
-        int deviceLimit)
+        int deviceLimit,
+        DateTime? expiresUtc = null,
+        string? recoveryPassword = null)
     {
         RequireAdmin(catalog, session);
         ValidateDeviceLimit(deviceLimit);
         var company = RequiredCompany(catalog, companyId);
         var file = AddCompanyFileCore(company, fileName, companyPath, deviceLimit);
+        file.ExpiresUtc = expiresUtc?.ToUniversalTime();
+        if (!string.IsNullOrWhiteSpace(recoveryPassword))
+            SetRecoveryPasswordCore(file, recoveryPassword, session.GlobalKey);
         try
         {
             WriteCompanyFile(globalPath, catalog, session, company, file);
@@ -396,6 +406,54 @@ internal static class InNascGlobalCoreService
         Save(path, catalog, session);
     }
 
+    public static void RenameLicense(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid fileId,
+        string newName)
+    {
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        var file = RequiredCompanyFile(company, fileId);
+        var name = newName.Trim();
+        if (name.Length == 0) throw new InvalidOperationException("Enter a license name.");
+        file.Name = name;
+        Save(path, catalog, session);
+    }
+
+    public static void SetLicenseExpiration(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid fileId,
+        DateTime? expiresUtc)
+    {
+        RequireAdmin(catalog, session);
+        var company = RequiredCompany(catalog, companyId);
+        var file = RequiredCompanyFile(company, fileId);
+        file.ExpiresUtc = expiresUtc?.ToUniversalTime();
+        Save(path, catalog, session);
+    }
+
+    public static void SetRecoveryPassword(
+        string path,
+        InNascGlobalCatalog catalog,
+        InNascGlobalSession session,
+        Guid companyId,
+        Guid fileId,
+        string password)
+    {
+        RequireAdmin(catalog, session);
+        ValidatePassword(password);
+        var company = RequiredCompany(catalog, companyId);
+        var file = RequiredCompanyFile(company, fileId);
+        SetRecoveryPasswordCore(file, password, session.GlobalKey);
+        Save(path, catalog, session);
+    }
+
     public static int GetDeviceCount(InNascCompanyFileRecord file)
     {
         if (!File.Exists(file.FilePath)) return 0;
@@ -416,11 +474,36 @@ internal static class InNascGlobalCoreService
             ClientSubmatrices = existing?.ClientSubmatrices ?? [],
             LicenseId = file.Id,
             LicenseName = string.IsNullOrWhiteSpace(file.Name) ? company.Name : file.Name,
-            DeviceLimit = file.DeviceLimit
+            DeviceLimit = file.DeviceLimit,
+            LicenseExpiresUtc = file.ExpiresUtc
         };
-        foreach (var user in company.Users.Where(candidate => candidate.Enabled && candidate.CredentialReady))
-            access.Users.Add(CreatePublishedCompanyUser(
-                user, file.CompanyKeyBase64, globalKey));
+        foreach (var user in company.Users.Where(candidate => candidate.Enabled))
+        {
+            if (user.CredentialReady)
+            {
+                access.Users.Add(CreatePublishedCompanyUser(user, file.CompanyKeyBase64, globalKey));
+                continue;
+            }
+            var preserved = existing?.Users.FirstOrDefault(candidate => !candidate.IsRecoveryAccount &&
+                (candidate.Id == user.Id || string.Equals(candidate.Username, user.Username,
+                    StringComparison.OrdinalIgnoreCase)));
+            if (preserved is not null)
+                access.Users.Add(MergePublishedProfile(user, preserved));
+        }
+        if (file.RecoveryUser?.CredentialReady == true)
+        {
+            var recovery = CreatePublishedCompanyUser(file.RecoveryUser, file.CompanyKeyBase64, globalKey);
+            recovery.IsRecoveryAccount = true;
+            recovery.Role = MasterUserRole.Owner;
+            recovery.HasAllClientAccess = true;
+            recovery.ClientAccessIds.Clear();
+            access.Users.Add(recovery);
+        }
+        else
+        {
+            var preservedRecovery = existing?.Users.FirstOrDefault(candidate => candidate.IsRecoveryAccount);
+            if (preservedRecovery is not null) access.Users.Add(ClonePublishedUser(preservedRecovery));
+        }
         return access;
     }
 
@@ -483,7 +566,8 @@ internal static class InNascGlobalCoreService
         };
         PortableDataService.ExportMaster(file.FilePath, data, CreateCompanyFileSession(session, file));
         InNascCompanyEnvelopeMetadataService.Apply(
-            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit, company.LogoBase64);
+            file.FilePath, company.Name, file.Name, file.Id, file.DeviceLimit,
+            company.LogoBase64, file.ExpiresUtc);
     }
 
     private static bool UpgradeCatalog(
@@ -646,6 +730,67 @@ internal static class InNascGlobalCoreService
             CryptographicOperations.ZeroMemory(globalEncryptionKey);
         }
     }
+
+    private static void SetRecoveryPasswordCore(
+        InNascCompanyFileRecord file,
+        string password,
+        string globalKey)
+    {
+        ValidatePassword(password);
+        var recovery = file.RecoveryUser ?? new InNascCompanyUserRecord();
+        recovery.Username = "root";
+        recovery.DisplayName = "InNasc Recovery";
+        recovery.Role = MasterUserRole.Owner;
+        recovery.HasAllClientAccess = true;
+        recovery.ClientAccessIds.Clear();
+        recovery.Enabled = true;
+        SetCompanyUserPassword(recovery, password, globalKey);
+        file.RecoveryUser = recovery;
+    }
+
+    private static MasterUserRecord MergePublishedProfile(
+        InNascCompanyUserRecord profile,
+        MasterUserRecord credential) => new()
+    {
+        Id = profile.Id,
+        Username = profile.Username,
+        DisplayName = profile.DisplayName,
+        Role = profile.Role,
+        PasswordSaltBase64 = credential.PasswordSaltBase64,
+        PasswordHashBase64 = credential.PasswordHashBase64,
+        PasswordIterations = credential.PasswordIterations,
+        MasterKeySaltBase64 = credential.MasterKeySaltBase64,
+        MasterKeyNonceBase64 = credential.MasterKeyNonceBase64,
+        MasterKeyCiphertextBase64 = credential.MasterKeyCiphertextBase64,
+        MasterKeyTagBase64 = credential.MasterKeyTagBase64,
+        HasAllClientAccess = profile.Role == MasterUserRole.Owner || profile.HasAllClientAccess,
+        ClientAccessIds = profile.Role == MasterUserRole.Owner || profile.HasAllClientAccess
+            ? []
+            : profile.ClientAccessIds.Distinct().ToList(),
+        Enabled = profile.Enabled,
+        IsRecoveryAccount = false,
+        CreatedUtc = profile.CreatedUtc
+    };
+
+    private static MasterUserRecord ClonePublishedUser(MasterUserRecord user) => new()
+    {
+        Id = user.Id,
+        Username = user.Username,
+        DisplayName = user.DisplayName,
+        Role = user.Role,
+        PasswordSaltBase64 = user.PasswordSaltBase64,
+        PasswordHashBase64 = user.PasswordHashBase64,
+        PasswordIterations = user.PasswordIterations,
+        MasterKeySaltBase64 = user.MasterKeySaltBase64,
+        MasterKeyNonceBase64 = user.MasterKeyNonceBase64,
+        MasterKeyCiphertextBase64 = user.MasterKeyCiphertextBase64,
+        MasterKeyTagBase64 = user.MasterKeyTagBase64,
+        HasAllClientAccess = user.HasAllClientAccess,
+        ClientAccessIds = user.ClientAccessIds.ToList(),
+        Enabled = user.Enabled,
+        IsRecoveryAccount = user.IsRecoveryAccount,
+        CreatedUtc = user.CreatedUtc
+    };
 
     private static MasterUserRecord CreatePublishedCompanyUser(
         InNascCompanyUserRecord user,

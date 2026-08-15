@@ -121,7 +121,10 @@ internal static class Program
             DeviceLimitPolicy.RequireCapacity(published, data, 1));
         room.Equipment.Add(new EquipmentRecord { Description = "Two" });
         RequireThrows<DeviceLimitExceededException>(() =>
-            PortableDataService.ExportMaster(companyPath, data, session));
+            DeviceLimitPolicy.RequireNewClientAllowed(data.MasterAccess, data));
+        // Existing data remains editable/saveable when a license is over its limit;
+        // only creation of new client cards/devices is locked.
+        PortableDataService.ExportMaster(companyPath, data, session);
     }
 
     private static void RunBrandingFlow()

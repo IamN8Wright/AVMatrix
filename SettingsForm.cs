@@ -175,7 +175,7 @@ internal sealed class SettingsForm : Form
         });
         panel.Controls.Add(new Label
         {
-            Text = "Transfer files may contain stored usernames and passwords. Keep them secure.",
+            Text = "Backups include credentials and configuration files by default; privacy options are offered before export.",
             AutoSize = true,
             Font = UiTheme.Font(8.5f),
             ForeColor = UiTheme.Amber,
@@ -228,11 +228,14 @@ internal sealed class SettingsForm : Form
             FileName = $"InNasc-Company-{DateTime.Now:yyyy-MM-dd}.nasc"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        var backupOptions = BackupPrivacyOptionsForm.Prompt(this);
+        if (backupOptions is null) return;
         var protection = PasswordDialog.PromptForNewFile(this);
         if (protection is null) return;
         try
         {
-            PortableDataService.Export(dialog.FileName, _data, protection.Password);
+            PortableDataService.Export(
+                dialog.FileName, _data, protection.Password, backupOptions);
             _transferStatus.Text = protection.Password is null
                 ? $"Exported {Path.GetFileName(dialog.FileName)}"
                 : $"Exported password-protected {Path.GetFileName(dialog.FileName)}";

@@ -105,6 +105,10 @@ internal static class Program
             "Global Admin did not read current device usage.");
         RequireThrows<DeviceLimitExceededException>(() =>
             DeviceLimitPolicy.RequireCapacity(data.MasterAccess, data, 1));
+        data.MasterAccess.LicenseExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
+        RequireThrows<LicenseExpiredException>(() =>
+            DeviceLimitPolicy.RequireNewClientAllowed(data.MasterAccess, data));
+        data.MasterAccess.LicenseExpiresUtc = null;
 
         InNascGlobalCoreService.SetDeviceLimit(
             globalPath, login.Catalog, login.Session, company.Id, company.Files[0].Id, 0);
@@ -193,8 +197,74 @@ internal static class Program
         var reopened = PortableDataService.Import(sourcePath, sourceSession.MasterKey).Data;
         Require(reopened.ProjectName == "Branded Company" && reopened.MasterAccess.DeviceLimit == 500,
             "Editable envelope metadata was not applied when opening the imported company.");
-        _ = MasterAccessService.SignIn(PortableDataService.ReadMasterAccess(sourcePath),
-            "existing-owner", OwnerPassword);
+
+        // Simulate a normal main-app save. Branding/license fields must survive.
+        PortableDataService.ExportMaster(sourcePath, reopened, sourceSession);
+        var afterAppSave = PortableDataService.ReadCompanySummary(sourcePath);
+        Require(afterAppSave.CompanyLogoBase64 == logoBase64 &&
+                afterAppSave.CompanyName == "Branded Company",
+            "A normal InNasc save erased Global Admin company branding.");
+
+        InNascCompanyGlobalAdminService.RenameLicense(
+            globalPath, global.Catalog, global.Session, company, imported, "Branded License");
+        InNascGlobalCoreService.SetLicenseExpiration(
+            globalPath, global.Catalog, global.Session, company.Id, imported.Id,
+            DateTime.UtcNow.AddYears(1));
+        InNascGlobalCoreService.SetRecoveryPassword(
+            globalPath, global.Catalog, global.Session, company.Id, imported.Id,
+            "Root-pass-530");
+        InNascCompanyAccessSyncService.SyncFile(
+            globalPath, global.Catalog, global.Session, company, imported);
+
+        var licensed = PortableDataService.ReadMasterAccess(sourcePath);
+        Require(licensed.LicenseName == "Branded License" &&
+                licensed.LicenseExpiresUtc is not null,
+            "License rename/expiration did not publish.");
+        Require(MasterAccessService.SignIn(licensed, "root", "Root-pass-530").IsOwner,
+            "The hidden recovery account could not unlock the company.");
+        _ = MasterAccessService.SignIn(licensed, "existing-owner", OwnerPassword);
+
+        var localData = PortableDataService.Import(sourcePath, sourceSession.MasterKey).Data;
+        var localSession = MasterAccessService.SignIn(
+            localData.MasterAccess, "existing-owner", OwnerPassword);
+        _ = MasterAccessService.AddUser(
+            localData.MasterAccess, localSession,
+            "field-tech", "Field Tech", "Field-pass-530", MasterUserRole.Tech);
+        PortableDataService.ExportMaster(sourcePath, localData, localSession);
+        InNascCompanyAccessSyncService.ReconcileFile(
+            globalPath, global.Catalog, global.Session, company, imported);
+        var pulled = company.Users.Single(user => user.Username == "field-tech");
+        Require(pulled.Role == MasterUserRole.Tech && !pulled.CredentialReady,
+            "Current .nasc users/access levels were not pulled into Global Admin as expected.");
+        _ = MasterAccessService.SignIn(
+            PortableDataService.ReadMasterAccess(sourcePath),
+            "field-tech", "Field-pass-530");
+
+        var sensitive = new AppData
+        {
+            Clients = [CompanyWithDevice("Sensitive")],
+            MasterAccess = new MasterAccessControl()
+        };
+        var equipment = sensitive.Clients[0].Locations[0].Rooms[0].Equipment[0];
+        equipment.Username = "admin";
+        equipment.Password = "secret";
+        equipment.ConfigurationFiles.Add(new DeviceConfigurationFile
+        {
+            FileName = "config.bin",
+            ContentBase64 = Convert.ToBase64String(new byte[] { 1, 2, 3 }),
+            ContentIncluded = true
+        });
+        var redactedPath = Path.Combine(root, "Redacted.nasc");
+        PortableDataService.Export(
+            redactedPath,
+            sensitive,
+            null,
+            new PortableBackupOptions(false, false));
+        var redacted = PortableDataService.Import(redactedPath).Data
+            .Clients[0].Locations[0].Rooms[0].Equipment[0];
+        Require(redacted.Username.Length == 0 && redacted.Password.Length == 0 &&
+                redacted.ConfigurationFiles.Count == 0,
+            "Backup privacy options did not redact credentials/config files.");
     }
 
     private static ClientRecord CompanyWithDevice(string name)
