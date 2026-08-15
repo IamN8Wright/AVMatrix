@@ -38,6 +38,10 @@ jobs:
         shell: pwsh
         run: python tools\patch53_tests.py
 
+      - name: Apply project boundaries
+        shell: pwsh
+        run: python tools\patch53_project.py
+
       - name: Run user application smoke tests
         shell: pwsh
         run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
@@ -60,6 +64,7 @@ jobs:
           Remove-Item tools\patch53_core.py
           Remove-Item tools\patch53_ui.py
           Remove-Item tools\patch53_tests.py
+          Remove-Item tools\patch53_project.py
           Remove-Item .github\workflows\implement-license-admin-5.3.yml
           git add -A
           git commit -m "Add license lifecycle and Global Admin recovery tools"
