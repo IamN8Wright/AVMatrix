@@ -50,6 +50,10 @@ jobs:
         shell: pwsh
         run: python tools\patch53_reconcile.py
 
+      - name: Preserve imported logins
+        shell: pwsh
+        run: python tools\patch53_preserve.py
+
       - name: Run user application smoke tests
         shell: pwsh
         run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release
@@ -75,6 +79,7 @@ jobs:
           Remove-Item tools\patch53_project.py
           Remove-Item tools\patch53_compat.py
           Remove-Item tools\patch53_reconcile.py
+          Remove-Item tools\patch53_preserve.py
           Remove-Item .github\workflows\implement-license-admin-5.3.yml
           git add -A
           git commit -m "Add license lifecycle and Global Admin recovery tools"
