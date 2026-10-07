@@ -80,7 +80,9 @@ internal sealed class EquipmentEditorForm : Form
             Padding = new Padding(0, 12, 0, 0)
         };
         var save = UiTheme.PrimaryButton(isNew ? "Add equipment" : "Save changes");
-        save.DialogResult = DialogResult.OK;
+        // The dialog must not close until validation and record updates finish successfully.
+        // A Button.DialogResult can close a modal form even when a later save path fails.
+        save.DialogResult = DialogResult.None;
         save.Click += Save_Click;
         var cancel = UiTheme.SecondaryButton("Cancel");
         cancel.DialogResult = DialogResult.Cancel;
@@ -751,6 +753,9 @@ internal sealed class EquipmentEditorForm : Form
 
         _source.SyncLegacyNetworkFields();
         _source.UpdateAggregateNetworkState();
+
+        // Signal success only after every validation and field update above completed.
+        DialogResult = DialogResult.OK;
     }
 
     private string Value(string key) => _fields[key].Text.Trim();
