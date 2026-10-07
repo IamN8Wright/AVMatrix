@@ -2216,6 +2216,12 @@ public sealed class MainForm : Form
                 "Add equipment", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+
+        // A Google Drive live-sync can already be in flight when the modal editor opens.
+        // If it finishes while the user is typing, the client/room object graph can be
+        // replaced. Keep the stable room ID, then resolve the current room again after
+        // the editor closes instead of adding to a detached stale RoomRecord instance.
+        var targetRoomId = room.Id;
         var equipment = new EquipmentRecord { NetworkState = NetworkState.NoAddress };
         var client = FindClient(room);
         using var editor = new EquipmentEditorForm(
@@ -2224,26 +2230,80 @@ public sealed class MainForm : Form
             ContainerPath(room),
             client is not null && CanEditConfigurationFiles(client));
         if (editor.ShowDialog(this) != DialogResult.OK) return;
-        room.Equipment.Add(equipment);
+
+        var currentRoom = EquipmentCommitService.FindCurrentRoom(_data, targetRoomId);
+        var currentClient = EquipmentCommitService.FindCurrentClientForRoom(_data, targetRoomId);
+        if (currentRoom is null || currentClient is null)
+        {
+            MessageBox.Show(this,
+                "The destination room changed or was removed while the equipment editor was open. " +
+                "The device was not written to a stale room reference. Please reopen the room and try again.",
+                "Room changed during edit",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+        if (!EnsureWorkspaceWritable(currentClient)) return;
+        if (!EquipmentCommitService.TryAddToCurrentRoom(_data, targetRoomId, equipment, out currentRoom) ||
+            currentRoom is null)
+        {
+            MessageBox.Show(this,
+                "InNasc could not attach the new device to the current room. No partial record was saved.",
+                "Add equipment",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
         TrySave();
         _welcomePage.RefreshClients();
         RefreshManufacturerFilter();
         RefreshGrid(equipment.Id);
+        _statusLabel.Text = $"Added {equipment.Description} to {ContainerPath(currentRoom)}";
     }
 
     private void EditSelectedEquipment()
     {
         if (!EnsureWorkspaceWritable()) return;
         if (SelectedEquipmentContext() is not { } selected) return;
+
+        var equipmentId = selected.Equipment.Id;
         using var editor = new EquipmentEditorForm(
             selected.Equipment,
             false,
             ContainerPath(selected.Client, selected.Location, selected.Room),
             CanEditConfigurationFiles(selected.Client));
         if (editor.ShowDialog(this) != DialogResult.OK) return;
+
+        var currentContext = GetAllContexts()
+            .FirstOrDefault(item => item.Equipment.Id == equipmentId);
+        if (currentContext is null)
+        {
+            MessageBox.Show(this,
+                "This equipment record changed or was removed while the editor was open, so InNasc did not " +
+                "write the edit into an outdated record.",
+                "Equipment changed during edit",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+        if (!EnsureWorkspaceWritable(currentContext.Client)) return;
+        if (!EquipmentCommitService.TryApplyToCurrentEquipment(
+                _data, equipmentId, selected.Equipment, out var currentEquipment) ||
+            currentEquipment is null)
+        {
+            MessageBox.Show(this,
+                "InNasc could not apply the equipment changes to the current record.",
+                "Edit equipment",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
         TrySave();
         RefreshManufacturerFilter();
-        RefreshGrid(selected.Equipment.Id);
+        RefreshGrid(currentEquipment.Id);
+        _statusLabel.Text = $"Saved {currentEquipment.Description}";
     }
 
     private void DuplicateSelectedEquipment()
