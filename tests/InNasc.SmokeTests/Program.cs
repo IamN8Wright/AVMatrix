@@ -17,6 +17,7 @@ internal static class Program
         {
             RunDirectCompanyLogin(root);
             RunDeviceLimitEnforcement(root);
+            RunEquipmentCommitRaceProtection();
             RunLegacyReadCompatibility(root);
             RunBrandingFlow();
             Console.WriteLine("InNasc user application smoke tests passed.");
@@ -56,6 +57,96 @@ internal static class Program
         Require(opened.ProjectName == "Direct Login Company", "The company name did not round-trip.");
         Require(opened.Clients.Count == 1, "The company inventory did not open after direct login.");
         Require(signedIn.Role == MasterUserRole.Owner, "The company role was not loaded.");
+    }
+
+    private static void RunEquipmentCommitRaceProtection()
+    {
+        var roomId = Guid.NewGuid();
+        var staleRoom = new RoomRecord { Id = roomId, Name = "Conference A" };
+        var location = new LocationRecord { Name = "Main", Rooms = [staleRoom] };
+        var client = new ClientRecord { Name = "Race Test", Locations = [location] };
+        var data = new AppData { Clients = [client] };
+
+        // Simulate an already-running live sync replacing the object graph while the
+        // modal Add Equipment editor is open. The replacement keeps the same stable IDs
+        // but is a different RoomRecord instance.
+        var currentRoom = new RoomRecord { Id = roomId, Name = "Conference A" };
+        location.Rooms[0] = currentRoom;
+
+        var newDevice = new EquipmentRecord
+        {
+            Description = "DSP-1",
+            Hostname = "dsp-1",
+            NetworkInterfaces =
+            [
+                new NetworkInterfaceRecord
+                {
+                    Type = NetworkInterfaceType.Main,
+                    IpAddress = "10.20.30.40",
+                    MacAddress = "00:11:22:33:44:55"
+                }
+            ]
+        };
+
+        Require(
+            EquipmentCommitService.TryAddToCurrentRoom(data, roomId, newDevice, out var resolvedRoom),
+            "A new device was not committed after the room object was replaced.");
+        Require(ReferenceEquals(resolvedRoom, currentRoom),
+            "The add path did not re-resolve the current room instance.");
+        Require(currentRoom.Equipment.Count == 1 && currentRoom.Equipment[0].Id == newDevice.Id,
+            "The new device was not attached to the live room.");
+        Require(staleRoom.Equipment.Count == 0,
+            "The regression test unexpectedly modified the detached stale room.");
+
+        // Simulate the same race while editing an existing device.
+        var equipmentId = newDevice.Id;
+        var currentDevice = new EquipmentRecord
+        {
+            Id = equipmentId,
+            Description = "DSP-1",
+            Hostname = "old-host",
+            NetworkInterfaces =
+            [
+                new NetworkInterfaceRecord
+                {
+                    Type = NetworkInterfaceType.Main,
+                    IpAddress = "10.20.30.40",
+                    MacAddress = "00:11:22:33:44:55"
+                }
+            ]
+        };
+        currentRoom.Equipment[0] = currentDevice;
+
+        var staleEditedDevice = new EquipmentRecord
+        {
+            Id = equipmentId,
+            Description = "DSP-1 Edited",
+            Hostname = "new-host",
+            Username = "admin",
+            Password = "test-password",
+            NetworkInterfaces =
+            [
+                new NetworkInterfaceRecord
+                {
+                    Type = NetworkInterfaceType.Main,
+                    IpAddress = "10.20.30.41",
+                    MacAddress = "00:11:22:33:44:66"
+                }
+            ]
+        };
+        staleEditedDevice.SyncLegacyNetworkFields();
+        staleEditedDevice.UpdateAggregateNetworkState();
+
+        Require(
+            EquipmentCommitService.TryApplyToCurrentEquipment(
+                data, equipmentId, staleEditedDevice, out var resolvedEquipment),
+            "An edit was not applied after the equipment object was replaced.");
+        Require(ReferenceEquals(resolvedEquipment, currentDevice),
+            "The edit path did not re-resolve the current equipment instance.");
+        Require(currentDevice.Description == "DSP-1 Edited" &&
+                currentDevice.Hostname == "new-host" &&
+                currentDevice.PrimaryIp == "10.20.30.41",
+            "The edited fields were not applied to the live equipment record.");
     }
 
     private static void RunLegacyReadCompatibility(string root)
