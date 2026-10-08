@@ -16,6 +16,7 @@ internal static class Program
         try
         {
             RunDirectCompanyLogin(root);
+            RunOlderNascEnvelopeUpgrade(root);
             RunDeviceLimitEnforcement(root);
             RunEquipmentCommitRaceProtection();
             RunLegacyReadCompatibility(root);
@@ -57,6 +58,99 @@ internal static class Program
         Require(opened.ProjectName == "Direct Login Company", "The company name did not round-trip.");
         Require(opened.Clients.Count == 1, "The company inventory did not open after direct login.");
         Require(signedIn.Role == MasterUserRole.Owner, "The company role was not loaded.");
+    }
+
+    private static void RunOlderNascEnvelopeUpgrade(string root)
+    {
+        var companyPath = Path.Combine(root, "Older-Plain-Company.nasc");
+        var access = new MasterAccessControl();
+        _ = MasterAccessService.CreateInitialOwner(
+            access, "owner", "Company Owner", OwnerPassword);
+        var ownerSession = MasterAccessService.SignIn(access, "owner", OwnerPassword);
+        var configBytes = Encoding.UTF8.GetBytes("legacy-config-payload");
+        var client = new ClientRecord
+        {
+            Name = "Older Client",
+            Locations =
+            [
+                new LocationRecord
+                {
+                    Name = "Main",
+                    Rooms =
+                    [
+                        new RoomRecord
+                        {
+                            Name = "Conference",
+                            Equipment =
+                            [
+                                new EquipmentRecord
+                                {
+                                    Description = "DSP",
+                                    ConfigurationFiles =
+                                    [
+                                        new DeviceConfigurationFile
+                                        {
+                                            FileName = "dsp.cfg",
+                                            ContentType = "text/plain",
+                                            SizeBytes = configBytes.Length,
+                                            Sha256 = Convert.ToHexString(SHA256.HashData(configBytes)),
+                                            ContentBase64 = Convert.ToBase64String(configBytes),
+                                            ContentIncluded = true
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+        var data = new AppData
+        {
+            ProjectName = "Older Plain Company",
+            Clients = [client],
+            MasterAccess = access
+        };
+
+        // This reproduces the older/plain .nasc shape seen in the field: valid InNasc
+        // data and company accounts, but no outer Account Envelope.
+        PortableDataService.Export(companyPath, data);
+        var original = File.ReadAllBytes(companyPath);
+        Require(!PortableDataService.IsAccountProtected(original),
+            "The upgrade test fixture unexpectedly started account protected.");
+
+        var older = PortableDataService.ImportBytes(original).Data;
+        var signedIn = MasterAccessService.SignIn(
+            older.MasterAccess, "owner", OwnerPassword);
+        var upgrade = LegacyCompanyFileUpgradeService.UpgradeInPlace(
+            companyPath, older, new DataStore(), signedIn);
+
+        var upgraded = File.ReadAllBytes(companyPath);
+        Require(PortableDataService.IsAccountProtected(upgraded),
+            "The older .nasc was not upgraded to an Account Envelope.");
+        Require(Directory.Exists(upgrade.RecoveryDirectory),
+            "The older .nasc upgrade did not create a recovery snapshot.");
+
+        var opened = PortableDataService.ImportBytes(upgraded, signedIn.MasterKey).Data;
+        Require(opened.ProjectName == "Older Plain Company",
+            "The company identity changed during envelope upgrade.");
+        Require(opened.Clients.Count == 1 && opened.Clients[0].Id == client.Id,
+            "The client inventory changed during envelope upgrade.");
+        var masterFile = opened.Clients[0].Locations[0].Rooms[0].Equipment[0].ConfigurationFiles[0];
+        Require(!masterFile.ContentIncluded,
+            "Configuration-file payload should move out of the master during upgrade.");
+
+        var clientPath = ClientSubmatrixService.SharedClientPath(companyPath, client.Id);
+        Require(File.Exists(clientPath),
+            "The embedded configuration payload was not preserved in a client submatrix.");
+        var payloadClient = ClientSubmatrixService.ReadClientPackage(
+            File.ReadAllBytes(clientPath), client.Id, signedIn.MasterKey);
+        var payloadFile = payloadClient.Locations[0].Rooms[0].Equipment[0].ConfigurationFiles[0];
+        Require(payloadFile.ContentIncluded &&
+                Encoding.UTF8.GetString(payloadFile.GetContents()) == "legacy-config-payload",
+            "The configuration payload changed during older .nasc upgrade.");
+
+        try { Directory.Delete(upgrade.RecoveryDirectory, true); } catch { }
     }
 
     private static void RunEquipmentCommitRaceProtection()
