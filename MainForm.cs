@@ -68,6 +68,11 @@ public sealed class MainForm : Form
     private int _gridDragRowIndex = -1;
     private TreeNode? _dropTargetNode;
     private EquipmentContext? _pendingGridSingleClick;
+    private readonly Font _equipmentStatusFont = UiTheme.Font(8.7f, FontStyle.Bold);
+    private readonly Font _interfaceStatusFont = UiTheme.Font(8.5f, FontStyle.Bold);
+    private readonly Font _interfaceDescriptionFont = UiTheme.Font(8.8f, FontStyle.Italic);
+    private readonly Font _clientScopeFont = UiTheme.Font(24, FontStyle.Bold);
+    private readonly Font _containerScopeFont = UiTheme.Font(20, FontStyle.Bold);
 
     public MainForm(AppData data, DataStore store)
     {
@@ -164,6 +169,11 @@ public sealed class MainForm : Form
             _gridSingleClickTimer.Dispose();
             _lifetimeCancellation.Cancel();
             _lifetimeCancellation.Dispose();
+            _equipmentStatusFont.Dispose();
+            _interfaceStatusFont.Dispose();
+            _interfaceDescriptionFont.Dispose();
+            _clientScopeFont.Dispose();
+            _containerScopeFont.Dispose();
         };
     }
 
@@ -511,7 +521,7 @@ public sealed class MainForm : Form
 
         var scope = new Panel { Dock = DockStyle.Fill };
         _scopeTitle.AutoSize = true;
-        _scopeTitle.Font = UiTheme.Font(20, FontStyle.Bold);
+        _scopeTitle.Font = _containerScopeFont;
         _scopeTitle.ForeColor = UiTheme.Text;
         _scopeTitle.Location = new Point(0, 0);
         _scopeSubtitle.AutoSize = true;
@@ -1222,10 +1232,11 @@ public sealed class MainForm : Form
 
         var snapshot = SharedSyncService.Inspect(path, session.MasterKey);
         if (!ResumeOwnedCheckout(
-                snapshot.Contents.Data.MasterAccess,
+                snapshot.Contents.Data,
                 session,
                 SyncTarget.SharedFile,
-                snapshot.Fingerprint))
+                snapshot.Fingerprint,
+                snapshot.RawContents))
             _ = SharedSyncService.Pull(_data, _store, session.MasterKey, session);
         _data.Settings.LastMasterTarget = nameof(SyncTarget.SharedFile);
         _store.Save(_data);
@@ -1246,10 +1257,11 @@ public sealed class MainForm : Form
         var session = MasterAccessService.SignIn(access, username, password);
         var snapshot = await GoogleDriveSyncService.InspectAsync(_data, session.MasterKey);
         if (!ResumeOwnedCheckout(
-                snapshot.Contents.Data.MasterAccess,
+                snapshot.Contents.Data,
                 session,
                 SyncTarget.GoogleDrive,
-                snapshot.Fingerprint))
+                snapshot.Fingerprint,
+                snapshot.RawContents))
             _ = GoogleDriveSyncService.Pull(_data, _store, snapshot, session.MasterKey, session);
         _data.Settings.LastMasterTarget = nameof(SyncTarget.GoogleDrive);
         _store.Save(_data);
@@ -1257,11 +1269,14 @@ public sealed class MainForm : Form
     }
 
     private bool ResumeOwnedCheckout(
-        MasterAccessControl access,
+        AppData remote,
         MasterSession session,
         SyncTarget target,
-        string masterFingerprint)
+        string masterFingerprint,
+        byte[] masterContents)
     {
+        var access = remote.MasterAccess;
+        MasterAccessService.RequireRead(access, session);
         if (!_data.Settings.ActiveCheckoutClientId.HasValue) return false;
         if (!string.Equals(
                 _data.Settings.ActiveCheckoutTarget,
@@ -1281,8 +1296,21 @@ public sealed class MainForm : Form
                 access);
             return false;
         }
+        AppData? baseline = null;
+        var previousFingerprint = target == SyncTarget.GoogleDrive
+            ? _data.Settings.GoogleDriveFingerprint : _data.Settings.SharedMasterFingerprint;
+        try
+        {
+            baseline = SyncBaselineStore.Load(_store, target, previousFingerprint, session.MasterKey);
+        }
+        catch (SharedMasterConflictException)
+        {
+            // Keep unfinished checkout data when an older installation has no ancestor.
+        }
+        CheckoutResumeService.RefreshInventory(_data, remote, baseline);
         _data.MasterAccess = MasterAccessService.Clone(access);
         _data.Settings.MasterWorkspaceReadOnly = false;
+        SyncBaselineStore.Save(_store, target, masterContents);
         if (target == SyncTarget.GoogleDrive)
         {
             _data.Settings.GoogleDriveFingerprint = masterFingerprint;
@@ -1469,15 +1497,7 @@ public sealed class MainForm : Form
         RefreshSyncIndicator();
         if (!sync.DataPulled) return;
 
-        _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
-        ResetVerificationStates();
-        RefreshTree();
-        RefreshManufacturerFilter();
-        _welcomePage.RefreshClients();
-        ShowWelcomePage();
-        RefreshGrid();
-        _statusLabel.Text = "Synchronized the latest shared company file data";
+        RefreshAfterLiveDataChange();
     }
 
     private void OpenGoogleDriveSync()
@@ -1487,15 +1507,7 @@ public sealed class MainForm : Form
         RefreshSyncIndicator();
         if (!sync.DataPulled) return;
 
-        _activeClient = null;
-        Text = string.IsNullOrWhiteSpace(_data.ProjectName) ? "InNasc" : _data.ProjectName;
-        ResetVerificationStates();
-        RefreshTree();
-        RefreshManufacturerFilter();
-        _welcomePage.RefreshClients();
-        ShowWelcomePage();
-        RefreshGrid();
-        _statusLabel.Text = "Synchronized the latest Google Drive company data";
+        RefreshAfterLiveDataChange();
     }
 
     private async Task LogoutAsync()
@@ -1666,6 +1678,10 @@ public sealed class MainForm : Form
     private void RefreshAfterLiveDataChange()
     {
         var activeClientId = _activeClient?.Id;
+        var selectedScopeId = EntityId(_tree.SelectedNode?.Tag);
+        var selectedEquipmentId = SelectedEquipmentContext()?.Equipment.Id;
+        _gridSingleClickTimer.Stop();
+        _pendingGridSingleClick = null;
         Text = string.IsNullOrWhiteSpace(_data.ProjectName)
             ? "InNasc"
             : _data.ProjectName;
@@ -1676,15 +1692,16 @@ public sealed class MainForm : Form
         if (activeClientId.HasValue)
         {
             _activeClient = _data.Clients.FirstOrDefault(client => client.Id == activeClientId);
-            if (_activeClient is not null)
+            if (_activeClient is not null && AccessibleClients().Any(client => client.Id == _activeClient.Id))
             {
-                RefreshTree(_activeClient.Id);
+                RefreshTree(selectedScopeId ?? _activeClient.Id);
                 RefreshWorkspaceCheckoutState();
-                RefreshGrid();
+                RefreshGrid(selectedEquipmentId);
                 return;
             }
         }
 
+        if (activeClientId.HasValue) ShowWelcomePage();
         RefreshTree();
         RefreshGrid();
     }
@@ -2004,12 +2021,13 @@ public sealed class MainForm : Form
         if (selectId is null && _tree.SelectedNode?.Tag is { } current)
             selectId = EntityId(current);
 
+        _activeClient = WorkspaceInventory.Resolve(_data, _activeClient) as ClientRecord;
         _tree.BeginUpdate();
         _tree.Nodes.Clear();
         var accessibleClients = AccessibleClients();
         var clients = _activeClient is null
             ? accessibleClients
-            : accessibleClients.Where(client => ReferenceEquals(client, _activeClient));
+            : accessibleClients.Where(client => client.Id == _activeClient.Id);
         foreach (var client in clients.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             var clientNode = new TreeNode($"▣  {client.Name}") { Tag = client };
@@ -2644,10 +2662,10 @@ public sealed class MainForm : Form
     };
 
     private ClientRecord? FindClient(LocationRecord target) =>
-        _data.Clients.FirstOrDefault(client => client.Locations.Contains(target));
+        _data.Clients.FirstOrDefault(client => client.Locations.Any(location => location.Id == target.Id));
 
     private ClientRecord? FindClient(RoomRecord target) =>
-        _data.Clients.FirstOrDefault(client => client.Locations.Any(location => location.Rooms.Contains(target)));
+        _data.Clients.FirstOrDefault(client => client.Locations.Any(location => location.Rooms.Any(room => room.Id == target.Id)));
 
     private bool CanEditConfigurationFiles(ClientRecord client)
     {
@@ -2660,7 +2678,7 @@ public sealed class MainForm : Form
     }
 
     private LocationRecord? FindLocation(RoomRecord target) =>
-        _data.Clients.SelectMany(client => client.Locations).FirstOrDefault(location => location.Rooms.Contains(target));
+        _data.Clients.SelectMany(client => client.Locations).FirstOrDefault(location => location.Rooms.Any(room => room.Id == target.Id));
 
     private List<ClientRecord> AccessibleClients()
     {
@@ -2688,18 +2706,21 @@ public sealed class MainForm : Form
     private IEnumerable<EquipmentContext> GetScopedContexts()
     {
         var all = GetAllContexts();
-        return _tree.SelectedNode?.Tag switch
-        {
-            ClientRecord client => all.Where(item => ReferenceEquals(item.Client, client)),
-            LocationRecord location => all.Where(item => ReferenceEquals(item.Location, location)),
-            RoomRecord room => all.Where(item => ReferenceEquals(item.Room, room)),
-            _ => all
-        };
+        return WorkspaceInventory.Scope(all, _tree.SelectedNode?.Tag);
     }
 
     private void RefreshGrid(Guid? selectEquipmentId = null)
     {
+        // Rebind tree tags before showing names, counts or opening an editor.
+        if (_tree.SelectedNode is { } selectedNode)
+        {
+            var currentScope = WorkspaceInventory.Resolve(_data, selectedNode.Tag);
+            if (currentScope is not null) selectedNode.Tag = currentScope;
+            else RefreshTree();
+        }
+        _activeClient = WorkspaceInventory.Resolve(_data, _activeClient) as ClientRecord;
         RefreshWorkspaceCheckoutState();
+        UpdateSignedInLabel();
         var scoped = GetScopedContexts().ToList();
         UpdateScopeText(scoped.Count);
         UpdateMetrics(scoped);
@@ -2758,7 +2779,7 @@ public sealed class MainForm : Form
             row.Tag = context;
             row.Cells[_grid.Columns["OpenPortal"].Index] = new DataGridViewTextBoxCell();
             row.Cells[0].Style.ForeColor = StatusColor(equipment.NetworkState);
-            row.Cells[0].Style.Font = UiTheme.Font(8.7f, FontStyle.Bold);
+            row.Cells[0].Style.Font = _equipmentStatusFont;
             row.Cells[0].ToolTipText = string.IsNullOrWhiteSpace(equipment.LastNetworkError)
                 ? "Waiting for manual verification."
                 : equipment.LastNetworkError;
@@ -2792,9 +2813,9 @@ public sealed class MainForm : Form
                 interfaceRow.Tag = new NetworkInterfaceContext(context, networkInterface);
                 interfaceRow.Height = 36;
                 interfaceRow.Cells[0].Style.ForeColor = StatusColor(networkInterface.NetworkState);
-                interfaceRow.Cells[0].Style.Font = UiTheme.Font(8.5f, FontStyle.Bold);
+                interfaceRow.Cells[0].Style.Font = _interfaceStatusFont;
                 interfaceRow.Cells["Description"].Style.ForeColor = UiTheme.Muted;
-                interfaceRow.Cells["Description"].Style.Font = UiTheme.Font(8.8f, FontStyle.Italic);
+                interfaceRow.Cells["Description"].Style.Font = _interfaceDescriptionFont;
                 interfaceRow.Cells[0].ToolTipText = InterfaceTooltip(networkInterface);
                 if (string.IsNullOrWhiteSpace(networkInterface.PortalUrl))
                     interfaceRow.Cells[_grid.Columns["OpenPortal"].Index] = new DataGridViewTextBoxCell();
@@ -2803,7 +2824,7 @@ public sealed class MainForm : Form
                         $"Open {networkInterface.PortalUrl} in the default browser";
             }
         }
-        _statusLabel.Text = $"Showing {visible.Count} of {scoped.Count} equipment records";
+        _statusLabel.Text = WorkspaceInventory.CountSummary(visible.Count, scoped.Count, DeviceLimitPolicy.CountDevices(_data));
     }
 
     private static bool HasInterfaceDetails(EquipmentRecord equipment)
@@ -2821,23 +2842,23 @@ public sealed class MainForm : Form
         switch (_tree.SelectedNode?.Tag)
         {
             case ClientRecord client:
-                _scopeTitle.Font = UiTheme.Font(24, FontStyle.Bold);
+                _scopeTitle.Font = _clientScopeFont;
                 _scopeTitle.Text = client.Name;
                 _scopeSubtitle.Text = $"Client overview  •  {client.Locations.Count} location(s)  •  {count} equipment record(s)";
                 break;
             case LocationRecord location:
-                _scopeTitle.Font = UiTheme.Font(20, FontStyle.Bold);
+                _scopeTitle.Font = _containerScopeFont;
                 _scopeTitle.Text = location.Name;
                 _scopeSubtitle.Text = $"{FindClient(location)?.Name}  /  Location  •  {location.Rooms.Count} room(s)";
                 break;
             case RoomRecord room:
-                _scopeTitle.Font = UiTheme.Font(20, FontStyle.Bold);
+                _scopeTitle.Font = _containerScopeFont;
                 var roomLocation = FindLocation(room);
                 _scopeTitle.Text = room.Name;
                 _scopeSubtitle.Text = $"{(roomLocation is null ? string.Empty : FindClient(roomLocation)?.Name)}  /  {roomLocation?.Name}  /  Room";
                 break;
             default:
-                _scopeTitle.Font = UiTheme.Font(20, FontStyle.Bold);
+                _scopeTitle.Font = _containerScopeFont;
                 _scopeTitle.Text = "All equipment";
                 _scopeSubtitle.Text = "Every client, location, and room";
                 break;
@@ -3096,6 +3117,13 @@ public sealed class MainForm : Form
                 _statusLabel.Text = "Excel import canceled — no data was changed";
                 return;
             }
+
+            // Live sync can replace the workspace while the modal preview is open.
+            if (!EnsureWorkspaceWritable()) return;
+            if (!addClientAfterReview)
+                client = _data.Clients.FirstOrDefault(item => item.Id == client.Id)
+                    ?? throw new InvalidOperationException(
+                        "The client was removed while the preview was open. No import was applied.");
 
             DeviceLimitPolicy.RequireCapacity(
                 _data.MasterAccess,

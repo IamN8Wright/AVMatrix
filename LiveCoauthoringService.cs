@@ -47,13 +47,26 @@ internal static class LiveCoauthoringService
                     $"Checkout taken over by {recovery.NewHolder} — local work preserved");
             }
 
-            data.MasterAccess = MasterAccessService.Clone(
-                snapshot.Contents.Data.MasterAccess);
-            data.Settings.GoogleDriveRemoteChangesDetected = !string.Equals(
-                snapshot.Fingerprint,
-                data.Settings.GoogleDriveFingerprint,
-                StringComparison.OrdinalIgnoreCase);
-            store.Save(data);
+            MasterAccessService.RequireRead(snapshot.Contents.Data.MasterAccess, active.Session);
+            if (remoteChanged)
+            {
+                AppData? baseline = null;
+                try
+                {
+                    baseline = SyncBaselineStore.Load(store, SyncTarget.GoogleDrive,
+                        data.Settings.GoogleDriveFingerprint, active.Session.MasterKey);
+                }
+                catch (SharedMasterConflictException)
+                {
+                    // An unfinished checkout must survive a missing merge ancestor.
+                }
+                CheckoutResumeService.RefreshInventory(data, snapshot.Contents.Data, baseline);
+                SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, snapshot.RawContents);
+                data.Settings.GoogleDriveFingerprint = snapshot.Fingerprint;
+            }
+            data.MasterAccess = MasterAccessService.Clone(snapshot.Contents.Data.MasterAccess);
+            data.Settings.GoogleDriveRemoteChangesDetected = false;
+            if (remoteChanged) store.Save(data);
             return new LiveCoauthoringResult(
                 remoteChanged,
                 "Checkout active — takeover status connected");

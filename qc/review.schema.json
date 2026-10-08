@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "blocking_findings", "remaining_validation", "summary"],
+  "properties": {
+    "status": {"type": "string", "enum": ["pass", "fail", "incomplete"]},
+    "blocking_findings": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+      "required": ["file", "issue", "reproduction", "fix"], "properties": {
+        "file": {"type": "string"}, "issue": {"type": "string"},
+        "reproduction": {"type": "string"}, "fix": {"type": "string"}}}},
+    "remaining_validation": {"type": "array", "items": {"type": "string"}},
+    "summary": {"type": "string"}
+  }
+}

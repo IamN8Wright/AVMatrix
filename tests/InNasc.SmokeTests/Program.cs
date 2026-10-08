@@ -15,6 +15,8 @@ internal static class Program
         Directory.CreateDirectory(root);
         try
         {
+            QualityRegression.Run();
+            WorkspaceUiRegression.Run();
             RunDirectCompanyLogin(root);
             RunOlderNascEnvelopeUpgrade(root);
             RunDeviceLimitEnforcement(root);

@@ -107,6 +107,7 @@ internal static class GoogleDriveSyncService
             var remoteData = PortableDataService.ImportBytes(remote.Contents, password).Data;
             MasterAccessService.RequireWrite(remoteData.MasterAccess, session);
 
+            var beforeUpload = SyncPublishApplyService.Capture(data);
             var localForMerge = MasterCheckoutPolicy.PreserveProtectedClients(
                 data, remoteData, remoteData.MasterAccess, session);
             var dataToPush = localForMerge;
@@ -148,20 +149,16 @@ internal static class GoogleDriveSyncService
                     StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            data.ProjectName = masterData.ProjectName;
-            data.Clients = masterData.Clients;
-            data.MasterAccess = masterData.MasterAccess;
+            SyncPublishApplyService.Apply(data, beforeUpload, masterData);
             data.Settings.GoogleDriveFingerprint = uploadedFingerprint;
-            data.Settings.GoogleDriveLocalContentFingerprint = SyncContentFingerprint.Compute(data);
             data.Settings.GoogleDriveRemoteChangesDetected = false;
             data.Settings.GoogleDriveLastSyncUtc = DateTime.UtcNow;
             SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, verified.Contents);
             store.Save(data);
             return new GoogleDriveSyncResult(
                 action, verified.Metadata, uploadedFingerprint, exportInfo.ExportedUtc,
-                exportInfo.RevisionId, exportInfo.SavedBy, data.Clients.Count,
-                data.Clients.Sum(client => client.Locations.Sum(location =>
-                    location.Rooms.Sum(room => room.Equipment.Count))), recoveryPath);
+                exportInfo.RevisionId, exportInfo.SavedBy, masterData.Clients.Count,
+                DeviceLimitPolicy.CountDevices(masterData), recoveryPath);
         }
 
         throw new SharedMasterConflictException(

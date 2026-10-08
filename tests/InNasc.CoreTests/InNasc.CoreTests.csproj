@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../AppInfo.cs" Link="AppInfo.cs" />
+    <Compile Include="../../Models.cs" Link="Models.cs" />
+    <Compile Include="../../WorkspaceInventory.cs" Link="WorkspaceInventory.cs" />
+    <Compile Include="../../SyncContentFingerprint.cs" Link="SyncContentFingerprint.cs" />
+    <Compile Include="../../SyncPublishApplyService.cs" Link="SyncPublishApplyService.cs" />
+    <Compile Include="../../CheckoutResumeService.cs" Link="CheckoutResumeService.cs" />
+    <Compile Include="../../AppDataMergeService.cs" Link="AppDataMergeService.cs" />
+    <Compile Include="../../ClientSubmatrixService.cs" Link="ClientSubmatrixService.cs" />
+    <Compile Include="../../PortableDataService.cs" Link="PortableDataService.cs" />
+    <Compile Include="../../JwePasswordProtection.cs" Link="JwePasswordProtection.cs" />
+    <Compile Include="../../MasterAccessService.cs" Link="MasterAccessService.cs" />
+    <Compile Include="../../DataStore.cs" Link="DataStore.cs" />
+    <Compile Include="../../InNascFileTypes.cs" Link="InNascFileTypes.cs" />
+    <Compile Include="../../DeviceLimitPolicy.cs" Link="DeviceLimitPolicy.cs" />
+    <Compile Include="../../ExcelImportMergeService.cs" Link="ExcelImportMergeService.cs" />
+    <Compile Include="../InNasc.SmokeTests/QualityRegression.cs" Link="QualityRegression.cs" />
+  </ItemGroup>
+</Project>
