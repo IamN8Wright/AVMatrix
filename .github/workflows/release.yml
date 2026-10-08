@@ -56,6 +56,10 @@ jobs:
         shell: pwsh
         run: .\Restore-BrandAssets.ps1
 
+      - name: Run inventory and synchronization QC
+        shell: pwsh
+        run: dotnet run --project tests\InNasc.CoreTests\InNasc.CoreTests.csproj --configuration Release
+
       - name: Run InNasc user application smoke tests
         shell: pwsh
         run: dotnet run --project tests\InNasc.SmokeTests\InNasc.SmokeTests.csproj --configuration Release

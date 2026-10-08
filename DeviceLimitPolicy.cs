@@ -22,8 +22,8 @@ internal static class DeviceLimitPolicy
     {
         var count = CountDevices(data);
         return access.DeviceLimit <= 0
-            ? $"{count:N0} devices / Unlimited"
-            : $"{count:N0} / {access.DeviceLimit:N0} devices";
+            ? $"Company: {count:N0} devices / Unlimited"
+            : $"Company: {count:N0} / {access.DeviceLimit:N0} devices";
     }
 
     public static string WarningText(MasterAccessControl access, AppData data)

@@ -29,6 +29,9 @@ internal sealed record ExcelImportPreviewEntry(
 
 internal sealed record ExcelImportPlan(IReadOnlyList<ExcelImportPreviewEntry> Entries)
 {
+    public string ClientFingerprint { get; init; } = string.Empty;
+    public Guid TargetLocationId { get; init; }
+    public Guid? SelectedRoomId { get; init; }
     public int ImportedRows => Entries.Count;
     public int AddedDevices => Entries.Count(item => item.Action == ExcelImportAction.AddNew);
     public int MergedDevices => Entries.Count(item => item.Action == ExcelImportAction.Merge);
@@ -98,7 +101,7 @@ internal static class ExcelImportMergeService
             var importedRow = importedRows[index];
             var imported = importedRow.Equipment;
             imported.EnsureNetworkInterfaces();
-            var match = FindMatchingEquipment(simulation, imported);
+            var match = FindMatchingEquipment(simulation, imported, defaultLocation.Id);
             var deviceName = DeviceName(imported);
             var warnings = importedRow.ImportWarnings.Count == 0
                 ? string.Empty
@@ -156,7 +159,12 @@ internal static class ExcelImportMergeService
                 details + warnings));
         }
 
-        return new ExcelImportPlan(entries);
+        return new ExcelImportPlan(entries)
+        {
+            ClientFingerprint = SyncContentFingerprint.ComputeClient(client),
+            TargetLocationId = defaultLocation.Id,
+            SelectedRoomId = selectedRoom?.Id
+        };
     }
 
     public static ExcelImportMergeResult Apply(
@@ -168,6 +176,14 @@ internal static class ExcelImportMergeService
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(defaultLocation);
         ArgumentNullException.ThrowIfNull(plan);
+
+        if (plan.TargetLocationId != defaultLocation.Id ||
+            plan.SelectedRoomId != selectedRoom?.Id ||
+            !string.Equals(plan.ClientFingerprint, SyncContentFingerprint.ComputeClient(client),
+                StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "The client or import destination changed after the preview. " +
+                "No import was applied; reopen the preview and review the new result.");
 
         var validation = Analyze(
             client,
@@ -183,7 +199,12 @@ internal static class ExcelImportMergeService
                 "No import was applied; reopen the preview.");
         for (var index = 0; index < validation.Entries.Count; index++)
         {
-            if (validation.Entries[index].Action == plannedEntries[index].Action) continue;
+            var current = validation.Entries[index];
+            var planned = plannedEntries[index];
+            if (current.Action == planned.Action &&
+                current.ExistingMatch == planned.ExistingMatch &&
+                current.Target == planned.Target &&
+                current.Details == planned.Details) continue;
             throw new InvalidOperationException(
                 $"The match for {validation.Entries[index].DeviceName} changed after the preview. " +
                 "No import was applied; reopen the preview and review the new result.");
@@ -232,7 +253,7 @@ internal static class ExcelImportMergeService
         {
             var imported = entry.ImportedRow.Equipment;
             imported.EnsureNetworkInterfaces();
-            var match = FindMatchingEquipment(workingClient, imported);
+            var match = FindMatchingEquipment(workingClient, imported, defaultLocation.Id);
             switch (entry.Action)
             {
                 case ExcelImportAction.AddNew:
@@ -275,12 +296,13 @@ internal static class ExcelImportMergeService
 
     private static MatchResolution FindMatchingEquipment(
         ClientRecord client,
-        EquipmentRecord imported)
+        EquipmentRecord imported,
+        Guid targetLocationId)
     {
         var candidates = client.Locations
-            .SelectMany(location => location.Rooms)
-            .SelectMany(room => room.Equipment)
-            .Select(existing => new MatchCandidate(existing, Score(existing, imported)))
+            .SelectMany(location => location.Rooms.SelectMany(room => room.Equipment)
+                .Select(existing => new MatchCandidate(existing,
+                    Score(existing, imported, location.Id == targetLocationId))))
             .Where(candidate => candidate.Evidence.IsMatch)
             .OrderByDescending(candidate => candidate.Evidence.Score)
             .ThenBy(candidate => candidate.Equipment.CreatedUtc)
@@ -305,25 +327,38 @@ internal static class ExcelImportMergeService
             best.Evidence.EvidenceSummary);
     }
 
-    private static MatchEvidence Score(EquipmentRecord existing, EquipmentRecord imported)
+    private static MatchEvidence Score(
+        EquipmentRecord existing, EquipmentRecord imported, bool sameLocation)
     {
         existing.EnsureNetworkInterfaces();
+        // A shared model, hostname or reused IP does not override a different physical ID.
+        if (Conflicts(existing.EquipmentId, imported.EquipmentId) ||
+            Conflicts(existing.SerialNumber, imported.SerialNumber))
+            return new MatchEvidence(0, false, string.Empty);
         var score = 0;
         var hasUniqueIdentifier = false;
         var evidence = new List<string>();
 
         AddIdentifierMatch(existing.EquipmentId, imported.EquipmentId, 1000, "equipment ID");
         AddIdentifierMatch(existing.SerialNumber, imported.SerialNumber, 900, "serial number");
-        if (Overlaps(
+        var macMatches = Overlaps(
                 existing.NetworkInterfaces.Select(item => NormalizeMac(item.MacAddress)),
-                imported.NetworkInterfaces.Select(item => NormalizeMac(item.MacAddress))))
+                imported.NetworkInterfaces.Select(item => NormalizeMac(item.MacAddress)));
+        if (macMatches)
         {
             score += 800;
             hasUniqueIdentifier = true;
             evidence.Add("MAC address");
         }
-        AddIdentifierMatch(existing.Hostname, imported.Hostname, 300, "hostname");
-        if (Overlaps(
+        if (!hasUniqueIdentifier &&
+            existing.NetworkInterfaces.Any(item => !string.IsNullOrWhiteSpace(item.MacAddress)) &&
+            imported.NetworkInterfaces.Any(item => !string.IsNullOrWhiteSpace(item.MacAddress)))
+            return new MatchEvidence(0, false, string.Empty);
+
+        // Network names and private IPs are only meaningful inside this location.
+        if (sameLocation)
+            AddIdentifierMatch(existing.Hostname, imported.Hostname, 300, "hostname");
+        if (sameLocation && Overlaps(
                 existing.NetworkInterfaces.Select(item => NormalizeIp(item.IpAddress)),
                 imported.NetworkInterfaces.Select(item => NormalizeIp(item.IpAddress))))
         {
@@ -347,7 +382,7 @@ internal static class ExcelImportMergeService
 
         return new MatchEvidence(
             score,
-            hasUniqueIdentifier || sameSignature,
+            hasUniqueIdentifier,
             evidence.Count == 0 ? "device details" : string.Join(", ", evidence));
 
         void AddIdentifierMatch(
@@ -518,6 +553,9 @@ internal static class ExcelImportMergeService
         !string.IsNullOrWhiteSpace(left) &&
         !string.IsNullOrWhiteSpace(right) &&
         string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool Conflicts(string left, string right) =>
+        !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right) && !Same(left, right);
 
     private static bool Overlaps(IEnumerable<string> left, IEnumerable<string> right)
     {

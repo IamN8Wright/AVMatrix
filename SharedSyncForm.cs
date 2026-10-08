@@ -378,7 +378,8 @@ internal sealed class SharedSyncForm : Form
                 result = SharedSyncService.Push(
                     _data, _store, password, resolver.Preference.Value, session);
             }
-            if (result.Action == "Merged") DataPulled = true;
+            // Both push outcomes replace the local inventory object graph.
+            DataPulled = true;
             RefreshMasterState();
             MessageBox.Show(this,
                 $"{(result.Action == "Merged" ? "Merged and pushed" : "Pushed")} revision " +

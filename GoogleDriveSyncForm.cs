@@ -542,7 +542,8 @@ internal sealed class GoogleDriveSyncForm : Form
           resolver.Preference.Value,
           session);
       }
-      if (result.Action == "Merged") DataPulled = true;
+      // Both push outcomes replace the local inventory object graph.
+      DataPulled = true;
       _details.Text =
         $"{(result.Action == "Merged" ? "Merged and pushed" : "Pushed")} revision " +
         $"{ShortRevision(result.RevisionId)} to {result.Metadata.Name}.";
