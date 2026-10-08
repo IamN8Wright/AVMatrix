@@ -38,6 +38,13 @@ internal static class QualityRegression
         Assert(local.Clients[0].Name == "Edited during upload", "A later edit was discarded.");
         Assert(local.Settings.GoogleDriveLocalContentFingerprint != SyncContentFingerprint.Compute(local),
             "Unsaved late edits must remain pending for the next push.");
+        var deleting = Clone(beforeUpload);
+        var removedDeviceId = deleting.Clients[0].Locations[0].Rooms[0].Equipment[0].Id;
+        deleting.Clients[0].Locations[0].Rooms[0].Equipment.RemoveAt(0);
+        SyncPublishApplyService.Apply(deleting, beforeUpload, published);
+        Assert(DeviceLimitPolicy.CountDevices(deleting) == 168 &&
+            !Contexts(deleting).Any(item => item.Equipment.Id == removedDeviceId),
+            "A deletion made during upload must remain deleted locally.");
         var clean = Clone(published);
         SyncPublishApplyService.Apply(clean, Clone(published), published);
         Assert(clean.Settings.GoogleDriveLocalContentFingerprint == SyncContentFingerprint.Compute(clean),
@@ -76,6 +83,14 @@ internal static class QualityRegression
             Assert(resumed.Clients[0].Locations[0].Rooms.Count == 3,
                 "Repeated sync lost a room.");
         }
+        var deletingCheckout = Clone(resumed);
+        deletingCheckout.Clients[0].Locations[0].Rooms.RemoveAll(room => room.Name == "23Hr Meeting Room");
+        var remoteWithAddition = Clone(company);
+        remoteWithAddition.Clients[0].Locations[0].Rooms.Add(new RoomRecord { Name = "New remote room" });
+        CheckoutResumeService.RefreshInventory(deletingCheckout, remoteWithAddition, company);
+        Assert(!deletingCheckout.Clients[0].Locations[0].Rooms.Any(room => room.Name == "23Hr Meeting Room") &&
+            deletingCheckout.Clients[0].Locations[0].Rooms.Any(room => room.Name == "New remote room"),
+            "Checkout resume must retain a local deletion and an independent remote addition.");
         var noAncestor = Clone(resumed);
         CheckoutResumeService.RefreshInventory(noAncestor, company, null);
         Assert(noAncestor.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes == "Unpushed local work",
