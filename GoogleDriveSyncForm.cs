@@ -9,6 +9,7 @@ internal sealed class GoogleDriveSyncForm : Form
   private readonly Label _fileState = new();
   private readonly Label _details = new();
   private readonly Label _protectionState = new();
+  private readonly Label _actionState = new();
   private readonly Button _connect = UiTheme.PrimaryButton("Sign in with Google");
   private readonly Button _link = UiTheme.SecondaryButton("Connect share link");
   private readonly Button _protection = UiTheme.SecondaryButton("File protection…");
@@ -44,32 +45,41 @@ internal sealed class GoogleDriveSyncForm : Form
     Text = "Google Drive online sync";
     StartPosition = FormStartPosition.CenterParent;
     MinimumSize = new Size(820, 760);
-    Size = new Size(890, 790);
+    Size = new Size(890, 840);
     BackColor = UiTheme.Canvas;
     Font = UiTheme.Font();
     Icon = AppBrand.CreateIcon();
     var shell = new TableLayoutPanel
     {
-      Dock = DockStyle.Fill,
+      Dock = DockStyle.Top,
+      Height = 778,
       ColumnCount = 1,
-      RowCount = 7,
+      RowCount = 8,
       Padding = new Padding(28, 18, 28, 14)
     };
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 144));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
-    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
     shell.Controls.Add(BuildHeading(), 0, 0);
     shell.Controls.Add(BuildOAuthPanel(), 0, 1);
     shell.Controls.Add(BuildFilePanel(), 0, 2);
     shell.Controls.Add(BuildStatusPanel(), 0, 3);
     shell.Controls.Add(BuildMasterActions(), 0, 4);
-    shell.Controls.Add(BuildActions(), 0, 5);
-    shell.Controls.Add(BuildFooter(), 0, 6);
-    Controls.Add(shell);
+    _actionState.Dock = DockStyle.Fill;
+    _actionState.Font = UiTheme.Font(9);
+    _actionState.ForeColor = UiTheme.Muted;
+    _actionState.AccessibleName = "Sync action availability";
+    shell.Controls.Add(_actionState, 0, 5);
+    shell.Controls.Add(BuildActions(), 0, 6);
+    shell.Controls.Add(BuildFooter(), 0, 7);
+    var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+    viewport.Controls.Add(shell);
+    Controls.Add(viewport);
     UiTheme.ApplyTheme(this);
     RefreshLocalState();
     Shown += async (_, _) =>
@@ -218,7 +228,7 @@ internal sealed class GoogleDriveSyncForm : Form
     }
     _masterSignIn.Width = 116;
     _checkout.Width = 142;
-    _checkIn.Width = 132;
+    _checkIn.Width = 150;
     _releaseCheckout.Width = 86;
     _recoverInventory.Width = 218;
     _masterSignIn.Click += async (_, _) => await SignInToMasterAsync();
@@ -996,6 +1006,18 @@ internal sealed class GoogleDriveSyncForm : Form
     _accountState.Text = signedIn ? "●  Connected" : configured ? "●  Ready to sign in" : "●  Setup required";
     _accountState.ForeColor = signedIn ? UiTheme.Green : UiTheme.Amber;
     var linked = !string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId);
+    RefreshActionAvailability(configured, signedIn, linked);
+    _masterSignIn.Text = _masterSession is null ? "Master sign in" : _masterSession.DisplayName;
+    if (!configured)
+      _details.Text = "Google requires an OAuth Desktop client for direct online access. " +
+              "Import the client JSON supplied for the InN8 Labs Google Cloud project.";
+    else if (!linked)
+      _details.Text = signedIn
+        ? "Paste the share link for an existing .nasc file and click Connect share link."
+        : "Click Sign in with Google, then connect the shared .nasc link.";
+  }
+  private void RefreshActionAvailability(bool configured, bool signedIn, bool linked)
+  {
     var checkoutActive = _data.Settings.ActiveCheckoutClientId.HasValue;
     var googleCheckoutActive = checkoutActive &&
       _data.Settings.ActiveCheckoutTarget == nameof(SyncTarget.GoogleDrive);
@@ -1013,23 +1035,38 @@ internal sealed class GoogleDriveSyncForm : Form
     _checkIn.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
     _releaseCheckout.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
     _recoverInventory.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
-    _masterSignIn.Text = _masterSession is null ? "Master sign in" : _masterSession.DisplayName;
+    _checkIn.Visible = googleCheckoutActive && !_connectionOnly;
+    _releaseCheckout.Visible = googleCheckoutActive && !_connectionOnly;
+    _recoverInventory.Visible = googleCheckoutActive && !_connectionOnly;
     if (_connectionOnly)
     {
       _pull.Enabled = false;
       _push.Enabled = false;
+      _checkIn.Enabled = false;
+      _releaseCheckout.Enabled = false;
+      _recoverInventory.Enabled = false;
       _masterSignIn.Visible = false;
       _checkIn.Visible = false;
       _releaseCheckout.Visible = false;
       _recoverInventory.Visible = false;
     }
-    if (!configured)
-      _details.Text = "Google requires an OAuth Desktop client for direct online access. " +
-              "Import the client JSON supplied for the InN8 Labs Google Cloud project.";
-    else if (!linked)
-      _details.Text = signedIn
-        ? "Paste the share link for an existing .nasc file and click Connect share link."
-        : "Click Sign in with Google, then connect the shared .nasc link.";
+    _actionState.Text = _connectionOnly
+      ? "Connection setup only. Close this window and sign in to your company to sync."
+      : _busy ? "Sync is running. Actions will become available when it finishes."
+      : checkoutActive && !googleCheckoutActive
+        ? "This checkout uses a company file. Choose Local / file share to check in, release or recover it."
+      : !configured ? "Import OAuth JSON, then sign in with Google to enable online sync."
+      : !signedIn ? "Sign in with Google above to enable online sync. Your company login is separate."
+      : !linked ? "Connect your company file's share link above to enable sync."
+      : googleCheckoutActive
+        ? "Use Check in & push to publish this client. Pull is unavailable until the checkout ends."
+        : "Pull and Merge & push are available. Checkout actions appear when a client is checked out.";
+    foreach (var button in new[] { _pull, _push, _checkIn, _releaseCheckout, _recoverInventory })
+    {
+      button.AccessibleDescription = _actionState.Text;
+      UiTheme.StyleSyncAction(button, primary: button == _push || button == _checkIn,
+        danger: button == _releaseCheckout);
+    }
   }
   private void ShowSnapshot(GoogleDriveSnapshot snapshot)
   {
