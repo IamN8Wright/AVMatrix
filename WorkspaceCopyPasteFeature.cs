@@ -541,7 +541,7 @@ internal sealed class WorkspaceCopyPasteFeature : IDisposable, IMessageFilter
 
     private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+        if (e.Graphics is null || e.RowIndex < 0 || e.ColumnIndex < 0 ||
             _grid.Columns[e.ColumnIndex].Name != "Description" ||
             _grid.Rows[e.RowIndex].Tag is not EquipmentContext context ||
             !HasInterfaceDetails(context.Equipment))
@@ -554,7 +554,8 @@ internal sealed class WorkspaceCopyPasteFeature : IDisposable, IMessageFilter
         using var border = new Pen(UiTheme.Border);
         e.Graphics.FillRectangle(fill, hit);
         e.Graphics.DrawRectangle(border, hit);
-        TextRenderer.DrawText(e.Graphics, expanded ? "▼" : "▶", UiTheme.Font(9.5f, FontStyle.Bold), hit,
+        using var arrowFont = UiTheme.Font(9.5f, FontStyle.Bold);
+        TextRenderer.DrawText(e.Graphics, expanded ? "▼" : "▶", arrowFont, hit,
             UiTheme.Blue, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         var textBounds = new Rectangle(hit.Right + 7, e.CellBounds.Top, Math.Max(0, e.CellBounds.Right - hit.Right - 12), e.CellBounds.Height);
         var style = e.CellStyle ?? _grid.DefaultCellStyle;
