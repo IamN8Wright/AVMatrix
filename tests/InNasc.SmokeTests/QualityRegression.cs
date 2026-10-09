@@ -98,7 +98,39 @@ internal static class QualityRegression
 
         RunImportRegression();
         RunCheckoutRecoveryRegression();
+        RunSyncNavigationRegression();
         Console.WriteLine("QC passed: scope rebinding, 169/172 counts, late upload edits, checkout resume, 240 sync cycles, import identity and preview races.");
+    }
+
+    private static void RunSyncNavigationRegression()
+    {
+        var settings = new AppSettings
+        {
+            SharedMasterPath = "company.nasc",
+            GoogleDriveFileId = "cloud-company",
+            LastMasterTarget = nameof(SyncTarget.GoogleDrive)
+        };
+        Assert(SyncNavigationPolicy.ForWorkspace(settings) == SyncTarget.GoogleDrive,
+            "Welcome must restore the last Google workspace even with an old company-file link.");
+        Assert(SyncNavigationPolicy.ForWorkspace(settings, SyncTarget.SharedFile) == SyncTarget.SharedFile,
+            "Sync must use the signed-in company rather than an unrelated cached Google link.");
+        settings.ActiveCheckoutClientId = Guid.NewGuid();
+        settings.ActiveCheckoutTarget = nameof(SyncTarget.SharedFile);
+        Assert(SyncNavigationPolicy.ForWorkspace(settings, SyncTarget.GoogleDrive) == SyncTarget.SharedFile,
+            "An unfinished company-file checkout must route to its original backend.");
+        Assert(!SyncNavigationPolicy.CanApplyStatus(settings, SyncTarget.GoogleDrive, SyncTarget.SharedFile),
+            "Inspecting Google must not replace a file workspace's checkout metadata.");
+        settings.ActiveCheckoutTarget = nameof(SyncTarget.GoogleDrive);
+        Assert(SyncNavigationPolicy.ForWorkspace(settings) == SyncTarget.GoogleDrive &&
+            !SyncNavigationPolicy.CanApplyStatus(settings, SyncTarget.SharedFile, SyncTarget.GoogleDrive),
+            "Google checkout state must remain associated with the Google workspace.");
+        settings.ActiveCheckoutClientId = null;
+        settings.GoogleDriveFileId = string.Empty;
+        Assert(SyncNavigationPolicy.ForWorkspace(settings) == SyncTarget.SharedFile,
+            "A remembered backend without a link must fall back to an available connection.");
+        Assert(!SyncNavigationPolicy.CanApplyStatus(settings, SyncTarget.GoogleDrive, SyncTarget.SharedFile),
+            "Cross-backend inspection must remain read-only even without a checkout.");
+        Console.WriteLine("Sync routing QC passed: checkout backend, signed-in workspace, last selected company and read-only status inspection.");
     }
 
     private static void RunCheckoutRecoveryRegression()

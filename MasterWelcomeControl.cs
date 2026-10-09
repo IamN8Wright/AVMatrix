@@ -455,13 +455,6 @@ internal sealed class MasterWelcomeControl : UserControl
 
     private void SelectInitialTarget()
     {
-        var hasGoogle = !string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFileId);
-        var hasLocal = !string.IsNullOrWhiteSpace(_data.Settings.SharedMasterPath);
-        var target = hasLocal
-            ? SyncTarget.SharedFile
-            : hasGoogle
-                ? SyncTarget.GoogleDrive
-                : SyncTarget.SharedFile;
-        SelectTarget(target);
+        SelectTarget(SyncNavigationPolicy.ForWorkspace(_data.Settings));
     }
 }

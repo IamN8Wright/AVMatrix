@@ -48,6 +48,7 @@ internal static class WorkspaceUiRegression
             Assert(tree.Nodes[0].Nodes[0].Nodes.Count == 3, "The current tree does not show all rooms.");
             VerifyCheckoutActions(data);
             VerifySyncActionStates();
+            VerifyWorkspaceSyncRouting(data, session);
             VerifyBackupButton();
             Console.WriteLine("Windows UI QC passed: parent path, current count, footer count, selection and 240 refresh cycles.");
         }
@@ -200,6 +201,103 @@ internal static class WorkspaceUiRegression
 
     private static T SyncField<T>(object form, string name) => (T)form.GetType()
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+
+    private static void VerifyWorkspaceSyncRouting(AppData source, MasterSession session)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "InNasc-Sync-Routing-" + Guid.NewGuid().ToString("N"));
+        var previous = MasterSessionContext.Current;
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "Company.nasc");
+            var store = new DataStore(Path.Combine(root, "Workstation"));
+            var data = new AppData
+            {
+                Clients = source.Clients.Select(ClientSubmatrixService.CloneClient).ToList(),
+                MasterAccess = MasterAccessService.Clone(source.MasterAccess),
+                Settings = new AppSettings
+                {
+                    SharedMasterPath = path,
+                    GoogleDriveFileId = "qc-cloud-copy",
+                    LastMasterTarget = nameof(SyncTarget.GoogleDrive),
+                    ActiveCheckoutClientId = source.Clients[0].Id,
+                    ActiveCheckoutToken = Guid.NewGuid(),
+                    ActiveCheckoutTarget = nameof(SyncTarget.SharedFile),
+                    GoogleDriveFingerprint = "original-cloud-baseline"
+                }
+            };
+            data.MasterAccess.Checkouts.Add(new ClientCheckoutRecord
+            {
+                ClientId = data.Settings.ActiveCheckoutClientId.Value,
+                CheckoutToken = data.Settings.ActiveCheckoutToken.Value,
+                UserId = session.UserId
+            });
+            PortableDataService.ExportMaster(path, data, session);
+            MasterSessionContext.Set(SyncTarget.SharedFile, path, session);
+            store.Save(data);
+            var saved = File.ReadAllBytes(store.DataPath);
+            var remote = new AppData { MasterAccess = MasterAccessService.Clone(data.MasterAccess) };
+            remote.MasterAccess.Checkouts.Clear();
+            var snapshot = new GoogleDriveSnapshot(
+                new GoogleDriveFileMetadata("qc-cloud-copy", "Cloud copy.nasc", "application/octet-stream",
+                    DateTime.UtcNow, "1", 0, true, []),
+                "remote-cloud-revision",
+                new PortableImport(remote, DateTime.UtcNow, AppInfo.Revision, "cloud-revision", "QC", true), []);
+            using (var cloudView = new GoogleDriveSyncForm(data, store))
+            {
+                typeof(GoogleDriveSyncForm).GetMethod("ShowSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(cloudView, [snapshot]);
+                Assert(data.MasterAccess.Checkouts.Count == 1 &&
+                    data.MasterAccess.Checkouts[0].CheckoutToken == data.Settings.ActiveCheckoutToken,
+                    "A Google file with zero checkouts must not erase an active company-file checkout.");
+                Assert(data.Settings.GoogleDriveFingerprint == "original-cloud-baseline" &&
+                    !data.Settings.GoogleDriveRemoteChangesDetected && File.ReadAllBytes(store.DataPath).SequenceEqual(saved),
+                    "Viewing another backend must not change or save the active workspace or its baseline.");
+            }
+
+            using var main = new MainForm(data, store);
+            main.Show();
+            Type? openedType = null;
+            bool checkInEnabled = false;
+            using var closeDialog = new System.Windows.Forms.Timer { Interval = 50 };
+            closeDialog.Tick += (_, _) =>
+            {
+                var dialog = Application.OpenForms.Cast<Form>().FirstOrDefault(form =>
+                    form.Visible && form is SharedSyncForm or GoogleDriveSyncForm);
+                if (dialog is null) return;
+                openedType = dialog.GetType();
+                var action = SyncField<Button>(dialog, "_push");
+                checkInEnabled = action.Enabled && action.Text.Contains("Check in");
+                closeDialog.Stop();
+                dialog.Close();
+            };
+            closeDialog.Start();
+            Field<Button>(main, "_syncButton").PerformClick();
+            closeDialog.Stop();
+            Assert(openedType == typeof(SharedSyncForm) && checkInEnabled,
+                "Clicking the sidebar sync icon must open the checkout's company-file dialog with Check in & push enabled.");
+            Assert(data.MasterAccess.Checkouts.Count == 1 && data.Settings.ActiveCheckoutClientId.HasValue,
+                "Opening and closing sync must preserve checkout ownership.");
+            data.Settings.ActiveCheckoutClientId = null;
+            data.Settings.LastMasterTarget = nameof(SyncTarget.GoogleDrive);
+            using (var welcome = new MasterWelcomeControl(data))
+                Assert(welcome.SelectedTarget == SyncTarget.GoogleDrive,
+                    "Welcome must remember Google Drive when both connection types are configured.");
+            MasterSessionContext.Clear();
+            MasterSessionContext.Set(SyncTarget.GoogleDrive, data.Settings.GoogleDriveFileId, session);
+            using var googleSync = (Form)typeof(MainForm).GetMethod("CreateWorkspaceSyncForm",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(main, null)!;
+            Assert(googleSync is GoogleDriveSyncForm, "A Google sign-in must route to Google Drive sync.");
+            main.Close();
+            Console.WriteLine("Windows sync routing QC passed: actual sidebar button click, enabled file check-in, zero-checkout cloud inspection isolation, remembered Google login and Google sync routing.");
+        }
+        finally
+        {
+            MasterSessionContext.Clear();
+            if (previous is not null) MasterSessionContext.Set(previous.Target, previous.MasterKey, previous.Session);
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
 
     private static void AssertClickableBounds(Form form, Button button)
     {

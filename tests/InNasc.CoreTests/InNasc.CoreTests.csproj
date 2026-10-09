@@ -9,6 +9,7 @@
     <Compile Include="../../AppInfo.cs" Link="AppInfo.cs" />
     <Compile Include="../../Models.cs" Link="Models.cs" />
     <Compile Include="../../WorkspaceInventory.cs" Link="WorkspaceInventory.cs" />
+    <Compile Include="../../SyncNavigationPolicy.cs" Link="SyncNavigationPolicy.cs" />
     <Compile Include="../../SyncContentFingerprint.cs" Link="SyncContentFingerprint.cs" />
     <Compile Include="../../SyncPublishApplyService.cs" Link="SyncPublishApplyService.cs" />
     <Compile Include="../../CheckoutResumeService.cs" Link="CheckoutResumeService.cs" />

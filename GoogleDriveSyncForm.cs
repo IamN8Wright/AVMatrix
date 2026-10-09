@@ -1070,7 +1070,12 @@ internal sealed class GoogleDriveSyncForm : Form
   }
   private void ShowSnapshot(GoogleDriveSnapshot snapshot)
   {
-    if (_legacyDriveSession is null)
+    var active = MasterSessionContext.Current;
+    var canApplyStatus = SyncNavigationPolicy.CanApplyStatus(
+      _data.Settings, SyncTarget.GoogleDrive, active?.Target) &&
+      (active is null || string.Equals(active.MasterKey, _data.Settings.GoogleDriveFileId,
+        StringComparison.OrdinalIgnoreCase));
+    if (_legacyDriveSession is null && canApplyStatus)
     {
       _data.MasterAccess = MasterAccessService.Clone(snapshot.Contents.Data.MasterAccess);
       GoogleDriveSyncService.EnsureBaselineIfSafe(_data, _store, snapshot);
@@ -1083,9 +1088,13 @@ internal sealed class GoogleDriveSyncForm : Form
       : snapshot.Contents.SavedBy;
     var pullRequired = string.IsNullOrWhiteSpace(_data.Settings.GoogleDriveFingerprint);
     var hasExternalChanges = GoogleDriveSyncService.HasExternalChanges(_data, snapshot);
-    _data.Settings.GoogleDriveRemoteChangesDetected = pullRequired || hasExternalChanges;
-    _store.Save(_data);
-    _fileState.Text = _legacyDriveSession is not null
+    if (canApplyStatus)
+    {
+      _data.Settings.GoogleDriveRemoteChangesDetected = pullRequired || hasExternalChanges;
+      _store.Save(_data);
+    }
+    _fileState.Text = !canApplyStatus ? "Viewed file — not active workspace"
+      : _legacyDriveSession is not null
       ? "Migration required"
       : pullRequired
         ? "Pull required"
@@ -1099,7 +1108,8 @@ internal sealed class GoogleDriveSyncForm : Form
       $"{snapshot.Contents.EquipmentCount:N0} equipment record(s)  •  " +
       $"{snapshot.Contents.Data.MasterAccess.Checkouts.Count:N0} checked out\r\n" +
       $"Revision {ShortRevision(snapshot.Contents.RevisionId)}  •  Saved {savedAt} by {savedBy}" +
-      (_data.Settings.ActiveCheckoutTarget == nameof(SyncTarget.GoogleDrive)
+      (!canApplyStatus ? "\r\nViewing this file does not change the active company workspace."
+      : _data.Settings.ActiveCheckoutTarget == nameof(SyncTarget.GoogleDrive)
         ? $"\r\nClient checkout active as {_data.Settings.ActiveCheckoutUsername}"
         : string.Empty);
     if (_legacyDriveSession is not null)
