@@ -8,6 +8,7 @@ For tests only, run `Run-QC.cmd -TestsOnly`. GitHub runs portable inventory QC o
 
 ## Required release cases
 
+- Sync controls: disconnected/missing-link/busy/setup-only states must look unavailable and state the reason. Connected controls must restore their enabled style, support keyboard focus, and have unobstructed click targets. Checkout controls appear only for the matching backend. Literal ampersands must be visible in action labels.
 - Login against fresh master data: Providence/CSC shows all three rooms without a manual Pull.
 - Resume an owned checkout: receive remote added rooms and other clients; retain unpushed edits, deletions, configuration-file bytes and the ownership token. If there is no valid merge ancestor, retain the checkout and do not guess how to reconcile deleted rooms.
 - Legacy baseline filenames: read both SharedMasterBaseline.avmatrix and GoogleDriveMasterBaseline.avmatrix when the new filename is absent; require the expected byte fingerprint.

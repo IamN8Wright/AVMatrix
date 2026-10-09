@@ -105,6 +105,20 @@ internal static class UiTheme
         return button;
     }
 
+    // Sync actions can be unavailable while signed out, busy or in another backend's
+    // checkout. Native flat buttons otherwise retain their enabled accent fill.
+    internal static void StyleSyncAction(Button button, bool primary = false, bool danger = false)
+    {
+        button.UseMnemonic = false;
+        button.Cursor = button.Enabled ? Cursors.Hand : Cursors.Default;
+        button.BackColor = !button.Enabled ? HeaderSurface : danger ? Red : primary ? Blue : Surface;
+        button.ForeColor = !button.Enabled ? Muted : danger || primary ? Color.White : Text;
+        button.FlatAppearance.BorderSize = button.Enabled && (primary || danger) ? 0 : 1;
+        button.FlatAppearance.BorderColor = Border;
+        button.FlatAppearance.MouseOverBackColor = danger ? Red : primary ? BlueHover : HeaderSurface;
+        button.Invalidate();
+    }
+
     public static Button SidebarButton(string text)
     {
         var button = BaseButton(text);

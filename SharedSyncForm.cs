@@ -8,6 +8,7 @@ internal sealed class SharedSyncForm : Form
     private readonly Label _state = new();
     private readonly Label _details = new();
     private readonly Label _guidance = new();
+    private readonly Label _actionState = new();
     private readonly Button _pull = UiTheme.SecondaryButton("Pull from master");
     private readonly Button _push = UiTheme.PrimaryButton("Merge & push");
     private readonly Button _unlink = UiTheme.DangerButton("Unlink");
@@ -31,8 +32,8 @@ internal sealed class SharedSyncForm : Form
         _masterPassword = _masterSession?.MasterKey;
         Text = "Company file sync";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(760, 700);
-        Size = new Size(820, 720);
+        MinimumSize = new Size(760, 748);
+        Size = new Size(820, 768);
         BackColor = UiTheme.Canvas;
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
@@ -41,13 +42,14 @@ internal sealed class SharedSyncForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 6,
+            RowCount = 7,
             Padding = new Padding(28, 22, 28, 20)
         };
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 140));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
 
@@ -55,8 +57,13 @@ internal sealed class SharedSyncForm : Form
         shell.Controls.Add(BuildLinkPanel(), 0, 1);
         shell.Controls.Add(BuildStatusPanel(), 0, 2);
         shell.Controls.Add(BuildMasterActions(), 0, 3);
-        shell.Controls.Add(BuildSyncActions(), 0, 4);
-        shell.Controls.Add(BuildFooter(), 0, 5);
+        _actionState.Dock = DockStyle.Fill;
+        _actionState.Font = UiTheme.Font(9);
+        _actionState.ForeColor = UiTheme.Muted;
+        _actionState.AccessibleName = "Sync action availability";
+        shell.Controls.Add(_actionState, 0, 4);
+        shell.Controls.Add(BuildSyncActions(), 0, 5);
+        shell.Controls.Add(BuildFooter(), 0, 6);
         Controls.Add(shell);
         UiTheme.ApplyTheme(this);
         RefreshMasterState();
@@ -674,6 +681,20 @@ internal sealed class SharedSyncForm : Form
         _checkIn.Enabled = linked && sharedCheckoutActive;
         _releaseCheckout.Enabled = linked && sharedCheckoutActive;
         _recoverInventory.Enabled = linked && sharedCheckoutActive;
+        _checkIn.Visible = sharedCheckoutActive;
+        _releaseCheckout.Visible = sharedCheckoutActive;
+        _recoverInventory.Visible = sharedCheckoutActive;
+        _actionState.Text = checkoutActive && !sharedCheckoutActive
+            ? "This checkout uses Google Drive online. Choose Google Drive online above to check in, release or recover it."
+            : !linked ? "Link a company file above to enable sync."
+            : sharedCheckoutActive ? "Use Check in & push to publish this client. Pull is unavailable until the checkout ends."
+            : "Pull and Merge & push are available. Checkout actions appear when a client is checked out.";
+        foreach (var button in new[] { _pull, _push, _checkIn, _releaseCheckout, _recoverInventory })
+        {
+            button.AccessibleDescription = _actionState.Text;
+            UiTheme.StyleSyncAction(button, primary: button == _push || button == _checkIn,
+                danger: button == _releaseCheckout);
+        }
         _signIn.Text = _masterSession is null ? "Sign in" : _masterSession.DisplayName;
         if (!linked)
         {

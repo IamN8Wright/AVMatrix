@@ -47,6 +47,7 @@ internal static class WorkspaceUiRegression
             }
             Assert(tree.Nodes[0].Nodes[0].Nodes.Count == 3, "The current tree does not show all rooms.");
             VerifyCheckoutActions(data);
+            VerifySyncActionStates();
             VerifyBackupButton();
             Console.WriteLine("Windows UI QC passed: parent path, current count, footer count, selection and 240 refresh cycles.");
         }
@@ -104,6 +105,94 @@ internal static class WorkspaceUiRegression
             Assert(form.ClientRectangle.Contains(button.Bounds), "The backup button extends beyond the dialog.");
         }
         Console.WriteLine("Windows backup UI QC passed: Continue text and bounds at 100%, 125%, and enlarged scaling.");
+    }
+
+    private static void VerifySyncActionStates()
+    {
+        // No real credentials or company file: state transitions below use explicit
+        // synthetic prerequisites, and never invoke a cloud or publishing handler.
+        var data = new AppData();
+        using var google = new GoogleDriveSyncForm(data, new DataStore());
+        google.Show();
+        var push = SyncField<Button>(google, "_push");
+        var pull = SyncField<Button>(google, "_pull");
+        var checkIn = SyncField<Button>(google, "_checkIn");
+        var recovery = SyncField<Button>(google, "_recoverInventory");
+        var actionState = SyncField<Label>(google, "_actionState");
+        void SetState(bool configured, bool signedIn, bool linked) =>
+            typeof(GoogleDriveSyncForm).GetMethod("RefreshActionAvailability",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(google, [configured, signedIn, linked]);
+        SetState(true, false, true);
+        Assert(!push.Enabled && push.BackColor == UiTheme.HeaderSurface && push.Cursor == Cursors.Default,
+            "A signed-out action must look disabled and use the default cursor.");
+        Assert(actionState.Text.Contains("Sign in with Google"), "Signed-out sync must explain how to enable it.");
+        Assert(!checkIn.Visible && !recovery.Visible, "Checkout controls must be hidden without a checkout.");
+        SetState(true, true, false);
+        Assert(!push.Enabled && actionState.Text.Contains("share link"), "An unlinked sync must explain the missing link.");
+        SetState(true, true, true);
+        Assert(push.Enabled && pull.Enabled && push.BackColor == UiTheme.Blue && push.Cursor == Cursors.Hand,
+            "Connected sync actions must become enabled and recover their accent styling.");
+        Assert(!push.UseMnemonic && push.Text.Contains("&"), "Sync action labels must render the literal ampersand.");
+        AssertClickableBounds(google, push);
+        AssertClickableBounds(google, pull);
+        push.Select();
+        Assert(push.ContainsFocus, "The enabled sync action must be reachable by keyboard focus.");
+        data.Settings.ActiveCheckoutClientId = Guid.NewGuid();
+        data.Settings.ActiveCheckoutTarget = nameof(SyncTarget.GoogleDrive);
+        SetState(true, true, true);
+        Assert(push.Enabled && checkIn.Enabled && recovery.Enabled && checkIn.Visible && recovery.Visible && !pull.Enabled,
+            "Google checkout actions must be available while full-master pull is disabled.");
+        Assert(push.Text.Contains("Check in") && actionState.Text.Contains("Pull is unavailable"),
+            "Checkout sync must name the available action and explain the disabled pull.");
+        AssertClickableBounds(google, checkIn);
+        AssertClickableBounds(google, recovery);
+        typeof(GoogleDriveSyncForm).GetField("_busy", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(google, true);
+        SetState(true, true, true);
+        Assert(!push.Enabled && !checkIn.Enabled && !recovery.Enabled && actionState.Text.Contains("running"),
+            "Busy sync must disable actions and explain the temporary wait.");
+        typeof(GoogleDriveSyncForm).GetField("_busy", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(google, false);
+        SetState(true, true, true);
+        Assert(push.Enabled && checkIn.Enabled && recovery.Enabled, "Finishing sync must restore checkout actions.");
+        data.Settings.ActiveCheckoutTarget = nameof(SyncTarget.SharedFile);
+        SetState(true, true, true);
+        Assert(!push.Enabled && !checkIn.Visible && !recovery.Visible && actionState.Text.Contains("Local / file share"),
+            "A file checkout must direct users to its own backend without offering Google writes.");
+        data.Settings.ActiveCheckoutTarget = nameof(SyncTarget.GoogleDrive);
+        using var setup = new GoogleDriveSyncForm(data, new DataStore(), connectionOnly: true);
+        typeof(GoogleDriveSyncForm).GetMethod("RefreshActionAvailability", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(setup, [true, true, true]);
+        Assert(!SyncField<Button>(setup, "_push").Enabled && !SyncField<Button>(setup, "_checkIn").Enabled &&
+            !SyncField<Button>(setup, "_recoverInventory").Enabled,
+            "Connection setup must never enable publishing controls.");
+        var wasDark = UiTheme.IsDarkMode;
+        try
+        {
+            UiTheme.SetDarkMode(true);
+            SetState(true, false, true);
+            Assert(push.BackColor == UiTheme.HeaderSurface && push.ForeColor == UiTheme.Muted,
+                "Dark-mode unavailable actions must use muted styling.");
+            SetState(true, true, true);
+            Assert(push.BackColor == UiTheme.Blue && push.ForeColor == Color.White,
+                "Dark-mode enabled actions must restore the primary style.");
+        }
+        finally { UiTheme.SetDarkMode(wasDark); }
+        google.Close();
+        Console.WriteLine("Windows sync action QC passed: signed out, missing link, connected, checkout, busy/re-enable, backend mismatch, setup-only, keyboard focus and unobstructed button bounds.");
+    }
+
+    private static T SyncField<T>(object form, string name) => (T)form.GetType()
+        .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+
+    private static void AssertClickableBounds(Form form, Button button)
+    {
+        form.PerformLayout();
+        Assert(button.Visible && button.Enabled, "The tested action must be visible and enabled.");
+        var screenPoint = button.PointToScreen(new Point(button.Width / 2, button.Height / 2));
+        Control current = form;
+        while (current.GetChildAtPoint(current.PointToClient(screenPoint), GetChildAtPointSkip.Invisible) is Control child)
+            current = child;
+        Assert(current == button, "Another control covers the sync action's click target.");
+        Assert(form.ClientRectangle.Contains(form.PointToClient(screenPoint)), "The sync action falls outside the dialog.");
     }
     private static T Field<T>(object form, string name) => (T)typeof(MainForm)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
