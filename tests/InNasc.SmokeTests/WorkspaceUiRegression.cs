@@ -149,6 +149,9 @@ internal static class WorkspaceUiRegression
         var checkoutText = TextRenderer.MeasureText(checkIn.Text, checkIn.Font);
         Assert(checkIn.ClientSize.Width >= checkoutText.Width + checkIn.Padding.Horizontal,
             "The literal Check in & push label must fit in its button.");
+        google.Size = google.MinimumSize;
+        AssertClickableBounds(google, push);
+        AssertClickableBounds(google, recovery);
         typeof(GoogleDriveSyncForm).GetField("_busy", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(google, true);
         SetState(true, true, true);
         Assert(!push.Enabled && !checkIn.Enabled && !recovery.Enabled && actionState.Text.Contains("running"),
@@ -180,6 +183,18 @@ internal static class WorkspaceUiRegression
         }
         finally { UiTheme.SetDarkMode(wasDark); }
         google.Close();
+        data.Settings.ActiveCheckoutTarget = nameof(SyncTarget.SharedFile);
+        data.Settings.SharedMasterPath = Path.Combine(Path.GetTempPath(), "Missing-Action-QC-Company.nasc");
+        using var shared = new SharedSyncForm(data, new DataStore());
+        shared.Show();
+        shared.Size = shared.MinimumSize;
+        AssertClickableBounds(shared, SyncField<Button>(shared, "_push"));
+        AssertClickableBounds(shared, SyncField<Button>(shared, "_checkIn"));
+        AssertClickableBounds(shared, SyncField<Button>(shared, "_recoverInventory"));
+        Assert(!SyncField<Button>(shared, "_pull").Enabled &&
+            SyncField<Button>(shared, "_pull").BackColor == UiTheme.HeaderSurface,
+            "The full-master pull must look unavailable during a file checkout.");
+        shared.Close();
         Console.WriteLine("Windows sync action QC passed: signed out, missing link, connected, checkout, busy/re-enable, backend mismatch, setup-only, keyboard focus and unobstructed button bounds.");
     }
 
@@ -190,14 +205,18 @@ internal static class WorkspaceUiRegression
     {
         form.PerformLayout();
         Assert(button.Visible && button.Enabled, "The tested action must be visible and enabled.");
+        foreach (var viewport in form.Controls.OfType<Panel>().Where(panel => panel.AutoScroll))
+            viewport.ScrollControlIntoView(button);
         var screenPoint = button.PointToScreen(new Point(button.Width / 2, button.Height / 2));
         Control current = form;
         while (current.GetChildAtPoint(current.PointToClient(screenPoint), GetChildAtPointSkip.Invisible) is Control child)
             current = child;
         Assert(current == button, "Another control covers the sync action's click target.");
         Assert(form.ClientRectangle.Contains(form.PointToClient(screenPoint)), "The sync action falls outside the dialog.");
-        for (Control child = button; child.Parent is Control parent && parent != form; child = parent)
-            Assert(parent.ClientRectangle.Contains(child.Bounds), "A sync action is clipped by its parent layout.");
+        var screenBounds = button.RectangleToScreen(button.ClientRectangle);
+        for (Control? parent = button.Parent; parent is not null; parent = parent.Parent)
+            Assert(parent.ClientRectangle.Contains(parent.RectangleToClient(screenBounds)),
+                "A sync action is clipped by its parent layout or cannot be scrolled into view.");
     }
     private static T Field<T>(object form, string name) => (T)typeof(MainForm)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
