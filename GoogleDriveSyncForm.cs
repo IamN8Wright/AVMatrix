@@ -44,14 +44,15 @@ internal sealed class GoogleDriveSyncForm : Form
     _filePassword = _companySession?.MasterKey;
     Text = "Google Drive online sync";
     StartPosition = FormStartPosition.CenterParent;
-    MinimumSize = new Size(820, 810);
+    MinimumSize = new Size(820, 760);
     Size = new Size(890, 840);
     BackColor = UiTheme.Canvas;
     Font = UiTheme.Font();
     Icon = AppBrand.CreateIcon();
     var shell = new TableLayoutPanel
     {
-      Dock = DockStyle.Fill,
+      Dock = DockStyle.Top,
+      Height = 778,
       ColumnCount = 1,
       RowCount = 8,
       Padding = new Padding(28, 18, 28, 14)
@@ -60,10 +61,10 @@ internal sealed class GoogleDriveSyncForm : Form
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 144));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
-    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
     shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+    shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
     shell.Controls.Add(BuildHeading(), 0, 0);
     shell.Controls.Add(BuildOAuthPanel(), 0, 1);
     shell.Controls.Add(BuildFilePanel(), 0, 2);
@@ -76,7 +77,9 @@ internal sealed class GoogleDriveSyncForm : Form
     shell.Controls.Add(_actionState, 0, 5);
     shell.Controls.Add(BuildActions(), 0, 6);
     shell.Controls.Add(BuildFooter(), 0, 7);
-    Controls.Add(shell);
+    var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+    viewport.Controls.Add(shell);
+    Controls.Add(viewport);
     UiTheme.ApplyTheme(this);
     RefreshLocalState();
     Shown += async (_, _) =>
@@ -225,7 +228,7 @@ internal sealed class GoogleDriveSyncForm : Form
     }
     _masterSignIn.Width = 116;
     _checkout.Width = 142;
-    _checkIn.Width = 132;
+    _checkIn.Width = 150;
     _releaseCheckout.Width = 86;
     _recoverInventory.Width = 218;
     _masterSignIn.Click += async (_, _) => await SignInToMasterAsync();

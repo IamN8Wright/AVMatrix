@@ -32,15 +32,16 @@ internal sealed class SharedSyncForm : Form
         _masterPassword = _masterSession?.MasterKey;
         Text = "Company file sync";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(760, 748);
-        Size = new Size(820, 768);
+        MinimumSize = new Size(760, 700);
+        Size = new Size(820, 800);
         BackColor = UiTheme.Canvas;
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
 
         var shell = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            Height = 752,
             ColumnCount = 1,
             RowCount = 7,
             Padding = new Padding(28, 22, 28, 20)
@@ -48,10 +49,10 @@ internal sealed class SharedSyncForm : Form
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 140));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
 
         shell.Controls.Add(BuildHeading(), 0, 0);
         shell.Controls.Add(BuildLinkPanel(), 0, 1);
@@ -64,7 +65,9 @@ internal sealed class SharedSyncForm : Form
         shell.Controls.Add(_actionState, 0, 4);
         shell.Controls.Add(BuildSyncActions(), 0, 5);
         shell.Controls.Add(BuildFooter(), 0, 6);
-        Controls.Add(shell);
+        var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        viewport.Controls.Add(shell);
+        Controls.Add(viewport);
         UiTheme.ApplyTheme(this);
         RefreshMasterState();
     }
@@ -198,7 +201,7 @@ internal sealed class SharedSyncForm : Form
         }
         _signIn.Width = 94;
         _checkout.Width = 142;
-        _checkIn.Width = 132;
+        _checkIn.Width = 150;
         _releaseCheckout.Width = 142;
         _recoverInventory.Width = 218;
         _signIn.Click += (_, _) => SignInToMaster();

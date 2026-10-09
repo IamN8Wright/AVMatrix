@@ -146,6 +146,9 @@ internal static class WorkspaceUiRegression
             "Checkout sync must name the available action and explain the disabled pull.");
         AssertClickableBounds(google, checkIn);
         AssertClickableBounds(google, recovery);
+        var checkoutText = TextRenderer.MeasureText(checkIn.Text, checkIn.Font);
+        Assert(checkIn.ClientSize.Width >= checkoutText.Width + checkIn.Padding.Horizontal,
+            "The literal Check in & push label must fit in its button.");
         typeof(GoogleDriveSyncForm).GetField("_busy", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(google, true);
         SetState(true, true, true);
         Assert(!push.Enabled && !checkIn.Enabled && !recovery.Enabled && actionState.Text.Contains("running"),
@@ -193,6 +196,8 @@ internal static class WorkspaceUiRegression
             current = child;
         Assert(current == button, "Another control covers the sync action's click target.");
         Assert(form.ClientRectangle.Contains(form.PointToClient(screenPoint)), "The sync action falls outside the dialog.");
+        for (Control child = button; child.Parent is Control parent && parent != form; child = parent)
+            Assert(parent.ClientRectangle.Contains(child.Bounds), "A sync action is clipped by its parent layout.");
     }
     private static T Field<T>(object form, string name) => (T)typeof(MainForm)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
