@@ -137,6 +137,22 @@ internal static class QualityRegression
             Assert(!local.Settings.ActiveCheckoutClientId.HasValue,
                 "Successful check-in must release local checkout ownership.");
 
+            SharedSyncService.CheckoutClient(local, store, id, session, false, session.MasterKey);
+            local.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Second local edit";
+            var conflicting = PortableDataService.Import(path, session.MasterKey).Data;
+            conflicting.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Remote conflicting edit";
+            PortableDataService.ExportMaster(path, conflicting, session);
+            var beforeConflict = File.ReadAllBytes(path);
+            var asked = false;
+            try { SharedSyncService.CheckInClient(local, store, session, session.MasterKey); }
+            catch (MergeResolutionRequiredException) { asked = true; }
+            Assert(asked && File.ReadAllBytes(path).SequenceEqual(beforeConflict) &&
+                local.Settings.ActiveCheckoutClientId == id,
+                "Overlapping check-in fields must require a decision without changing the master or releasing checkout.");
+            SharedSyncService.CheckInClient(local, store, session, session.MasterKey, MergeConflictPreference.ThisPc);
+            Assert(local.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes == "Second local edit",
+                "Explicit check-in resolution did not preserve the chosen local value.");
+
             // AV Matrix installations may still store the baseline under its old name.
             foreach (var target in new[] { SyncTarget.SharedFile, SyncTarget.GoogleDrive })
             {
@@ -192,6 +208,28 @@ internal static class QualityRegression
                 "Recovery preview must keep edits and leave live inventory untouched.");
             var bytesForRecovery = PortableDataService.ExportBytes(editedRemote, session.MasterKey, out _);
             var fingerprint = CheckoutInventoryService.LocalFingerprint(edited);
+            var stale = Clone(edited);
+            stale.Clients[0].Locations[0].Rooms[0].Equipment[0].ConfigurationFiles.Add(
+                new DeviceConfigurationFile { FileName = "late.cfg", ContentIncluded = true, ContentBase64 = "BAUG" });
+            var rejectedPreview = false;
+            try { CheckoutInventoryService.ApplyRecovery(stale, editedRemote, store, SyncTarget.SharedFile,
+                bytesForRecovery, recovery, fingerprint, session.MasterKey); }
+            catch (InvalidOperationException) { rejectedPreview = true; }
+            Assert(rejectedPreview && stale.Clients[0].Locations[0].Rooms.Count == 1 &&
+                stale.Settings.ActiveCheckoutToken == token,
+                "A changed configuration payload must invalidate recovery before any inventory or ownership mutation.");
+            var ownershipRemote = Clone(editedRemote);
+            ownershipRemote.MasterAccess = MasterAccessService.Clone(access);
+            ownershipRemote.MasterAccess.Checkouts.Add(new ClientCheckoutRecord
+            {
+                ClientId = edited.Clients[0].Id, UserId = session.UserId, CheckoutToken = token!.Value
+            });
+            CheckoutInventoryService.RequireOwnership(edited, ownershipRemote, session, SyncTarget.SharedFile);
+            ownershipRemote.MasterAccess.Checkouts[0].CheckoutToken = Guid.NewGuid();
+            var rejectedOwner = false;
+            try { CheckoutInventoryService.RequireOwnership(edited, ownershipRemote, session, SyncTarget.SharedFile); }
+            catch (InvalidOperationException) { rejectedOwner = true; }
+            Assert(rejectedOwner, "Recovery must reject a checkout taken over by another PC.");
             CheckoutInventoryService.ApplyRecovery(edited, editedRemote, store, SyncTarget.SharedFile,
                 bytesForRecovery, recovery, fingerprint, session.MasterKey);
             Assert(edited.Settings.ActiveCheckoutToken == token && DeviceLimitPolicy.CountDevices(edited) == 3,
