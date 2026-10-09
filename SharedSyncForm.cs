@@ -721,7 +721,9 @@ internal sealed class SharedSyncForm : Form
                 return;
             }
             var snapshot = knownSnapshot ?? SharedSyncService.Inspect(path, _masterPassword);
-            SharedSyncService.EnsureBaselineIfSafe(_data, _store, snapshot);
+            if (SyncNavigationPolicy.CanApplyStatus(_data.Settings, SyncTarget.SharedFile,
+                    MasterSessionContext.Current?.Target))
+                SharedSyncService.EnsureBaselineIfSafe(_data, _store, snapshot);
             var savedAt = snapshot.Contents.ExportedUtc == default
                 ? "unknown time"
                 : snapshot.Contents.ExportedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt");

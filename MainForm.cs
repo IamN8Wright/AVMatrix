@@ -241,8 +241,8 @@ public sealed class MainForm : Form
         _syncButton = UiTheme.SidebarIconButton(AppIcons.Sync(), "Company file sync");
         _syncButton.Size = new Size(42, 40);
         _syncButton.Margin = new Padding(0, 0, 6, 0);
-        _syncButton.Click += (_, _) => OpenGoogleDriveSync();
-        _toolTip.SetToolTip(_syncButton, "Google Drive sync (Local / file share is also available)");
+        _syncButton.Click += (_, _) => OpenWorkspaceSync();
+        _toolTip.SetToolTip(_syncButton, "Sync the current company workspace");
 
         _settingsButton = UiTheme.SidebarIconButton(AppIcons.Settings(), "Settings");
         _settingsButton.Size = new Size(42, 40);
@@ -1490,22 +1490,22 @@ public sealed class MainForm : Form
         }
     }
 
-    private void OpenSharedSync()
+    private Form CreateWorkspaceSyncForm()
     {
-        using var sync = new SharedSyncForm(_data, _store);
-        sync.ShowDialog(this);
-        RefreshSyncIndicator();
-        if (!sync.DataPulled) return;
-
-        RefreshAfterLiveDataChange();
+        var target = SyncNavigationPolicy.ForWorkspace(_data.Settings, MasterSessionContext.Current?.Target);
+        return target == SyncTarget.GoogleDrive
+            ? new GoogleDriveSyncForm(_data, _store)
+            : new SharedSyncForm(_data, _store);
     }
 
-    private void OpenGoogleDriveSync()
+    private void OpenWorkspaceSync()
     {
-        using var sync = new GoogleDriveSyncForm(_data, _store);
+        using var sync = CreateWorkspaceSyncForm();
         sync.ShowDialog(this);
         RefreshSyncIndicator();
-        if (!sync.DataPulled) return;
+        var dataPulled = sync is GoogleDriveSyncForm google ? google.DataPulled
+            : sync is SharedSyncForm shared && shared.DataPulled;
+        if (!dataPulled) return;
 
         RefreshAfterLiveDataChange();
     }
