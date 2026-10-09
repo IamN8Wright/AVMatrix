@@ -12,6 +12,10 @@
     <Compile Include="../../SyncContentFingerprint.cs" Link="SyncContentFingerprint.cs" />
     <Compile Include="../../SyncPublishApplyService.cs" Link="SyncPublishApplyService.cs" />
     <Compile Include="../../CheckoutResumeService.cs" Link="CheckoutResumeService.cs" />
+    <Compile Include="../../CheckoutInventoryService.cs" Link="CheckoutInventoryService.cs" />
+    <Compile Include="../../SyncBaselineStore.cs" Link="SyncBaselineStore.cs" />
+    <Compile Include="../../SharedSyncService.cs" Link="SharedSyncService.cs" />
+    <Compile Include="../../MasterCheckoutPolicy.cs" Link="MasterCheckoutPolicy.cs" />
     <Compile Include="../../AppDataMergeService.cs" Link="AppDataMergeService.cs" />
     <Compile Include="../../ClientSubmatrixService.cs" Link="ClientSubmatrixService.cs" />
     <Compile Include="../../PortableDataService.cs" Link="PortableDataService.cs" />

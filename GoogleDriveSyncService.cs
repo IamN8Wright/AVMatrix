@@ -376,7 +376,8 @@ internal static class GoogleDriveSyncService
         DataStore store,
         MasterSession session,
         string? password,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        MergeConflictPreference? conflictPreference = null)
     {
         if (data.Settings.ActiveCheckoutTarget != nameof(SyncTarget.GoogleDrive))
             throw new InvalidOperationException("The active checkout is not linked to Google Drive.");
@@ -391,6 +392,18 @@ internal static class GoogleDriveSyncService
         var initialData = PortableDataService.ImportBytes(initial.Contents, password).Data;
         MasterAccessService.RequireClientWrite(initialData.MasterAccess, session, clientId);
         RequireOwnedCheckout(initialData.MasterAccess, clientId, token, session);
+        AppData? baseline = null;
+        try
+        {
+            baseline = SyncBaselineStore.Load(store, SyncTarget.GoogleDrive,
+                data.Settings.GoogleDriveFingerprint, password);
+        }
+        catch (SharedMasterConflictException) { }
+        localClient = CheckoutInventoryService.MergeForCheckIn(localClient,
+            initialData.Clients.Single(client => client.Id == clientId),
+            baseline?.Clients.SingleOrDefault(client => client.Id == clientId),
+            data.Settings.ActiveCheckoutBaselineFingerprint, conflictPreference);
+        var uploadingClientFingerprint = CheckoutInventoryService.LocalFingerprint(data);
         var recovery = SaveRemoteRecoveryBackup(store, initial.Contents);
 
         var submatrixName = ClientSubmatrixService.GoogleDriveClientFileName(
@@ -428,6 +441,17 @@ internal static class GoogleDriveSyncService
         MasterAccessService.RequireClientWrite(latestData.MasterAccess, session, clientId);
         var checkout = RequireOwnedCheckout(
             latestData.MasterAccess, clientId, token, session);
+        // Retry from the current revision instead of replacing rooms or devices
+        // published by another writer while the payload upload was in flight.
+        if (!string.Equals(SyncContentFingerprint.ComputeClient(
+                initialData.Clients.Single(client => client.Id == clientId)),
+                SyncContentFingerprint.ComputeClient(latestData.Clients.Single(client => client.Id == clientId)),
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uploadingClientFingerprint, CheckoutInventoryService.LocalFingerprint(data),
+                StringComparison.OrdinalIgnoreCase))
+            throw new SharedMasterConflictException(
+                "The checked-out inventory changed during upload. Your local work and checkout were kept. " +
+                "Try Check in & push again to merge the current records.");
         var latestReference = latestData.MasterAccess.ClientSubmatrices
             .FirstOrDefault(reference => reference.ClientId == clientId);
         if (latestReference is null)

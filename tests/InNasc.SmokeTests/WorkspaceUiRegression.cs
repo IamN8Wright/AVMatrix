@@ -46,9 +46,64 @@ internal static class WorkspaceUiRegression
                 Assert(Field<Label>(form, "_totalMetric").Text == "172", "Repeated sync lost devices.");
             }
             Assert(tree.Nodes[0].Nodes[0].Nodes.Count == 3, "The current tree does not show all rooms.");
+            VerifyCheckoutActions(data);
+            VerifyBackupButton();
             Console.WriteLine("Windows UI QC passed: parent path, current count, footer count, selection and 240 refresh cycles.");
         }
         finally { MasterSessionContext.Clear(); }
+    }
+    private static void VerifyCheckoutActions(AppData data)
+    {
+        var synthetic = new AppData
+        {
+            Clients = data.Clients.Select(ClientSubmatrixService.CloneClient).ToList(),
+            Settings = new AppSettings
+            {
+                SharedMasterPath = Path.Combine(Path.GetTempPath(), "Missing-QC-Company.nasc"),
+                ActiveCheckoutClientId = data.Clients[0].Id,
+                ActiveCheckoutToken = Guid.NewGuid(),
+                ActiveCheckoutTarget = nameof(SyncTarget.SharedFile)
+            }
+        };
+        using var shared = new SharedSyncForm(synthetic, new DataStore());
+        var button = (Button)typeof(SharedSyncForm).GetField("_push", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(shared)!;
+        Assert(button.Enabled && button.Text == "Check in & push",
+            "The main sync action must remain available for a shared-file checkout.");
+        var recovery = (Button)typeof(SharedSyncForm).GetField("_recoverInventory", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(shared)!;
+        Assert(recovery.Enabled, "Missing-record recovery is unavailable for an active checkout.");
+        synthetic.Settings.ActiveCheckoutTarget = nameof(SyncTarget.GoogleDrive);
+        typeof(SharedSyncForm).GetMethod("RefreshMasterState", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(shared, [null]);
+        Assert(!button.Enabled && !recovery.Enabled,
+            "A checkout for a different backend must not be checked in or recovered here.");
+        using var google = new GoogleDriveSyncForm(synthetic, new DataStore(), connectionOnly: true);
+        var googleButton = (Button)typeof(GoogleDriveSyncForm).GetField("_push", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(google)!;
+        Assert(googleButton.Text == "Check in & push to Google Drive" && !googleButton.Enabled,
+            "Google sync must name the checkout action, and connection-only mode must prevent writes.");
+        var prepared = CheckoutInventoryService.PrepareRecovery(synthetic.Clients[0], synthetic.Clients[0]);
+        using var preview = new CheckoutRecoveryPreviewForm(prepared);
+        Assert(preview.CancelButton is Button && preview.AcceptButton is Button,
+            "The recovery preview must offer both cancel and explicit apply actions.");
+        Console.WriteLine("Windows checkout UI QC passed: main action, recovery action, backend mismatch and connection-only mode.");
+    }
+
+    private static void VerifyBackupButton()
+    {
+        using var form = (Form)Activator.CreateInstance(typeof(BackupPrivacyOptionsForm), nonPublic: true)!;
+        var button = form.Controls.OfType<Button>().Single(item => item.Text == "Continue");
+        foreach (var scale in new[] { 1f, 1.25f, 1.5f })
+        {
+            if (scale != 1f) form.Scale(new SizeF(scale, scale));
+            var text = TextRenderer.MeasureText(button.Text, button.Font);
+            Assert(button.ClientSize.Width >= text.Width + button.Padding.Horizontal &&
+                button.ClientSize.Height >= text.Height + button.Padding.Vertical,
+                "The backup Continue label must fit on one line at common Windows scaling settings.");
+            Assert(form.ClientRectangle.Contains(button.Bounds), "The backup button extends beyond the dialog.");
+        }
+        Console.WriteLine("Windows backup UI QC passed: Continue text and bounds at 100%, 125%, and enlarged scaling.");
     }
     private static T Field<T>(object form, string name) => (T)typeof(MainForm)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;

@@ -9,6 +9,11 @@ internal enum SyncTarget
     GoogleDrive
 }
 
+internal sealed class SharedMasterConflictException : InvalidOperationException
+{
+    public SharedMasterConflictException(string message) : base(message) { }
+}
+
 internal static class SyncBaselineStore
 {
     public static string SharedPath(DataStore store) =>
@@ -42,7 +47,7 @@ internal static class SyncBaselineStore
         string expectedFingerprint,
         string? password)
     {
-        var path = PathFor(store, target);
+        var path = ReadPathFor(store, target);
         if (!File.Exists(path))
             throw new SharedMasterConflictException(
                 "Pull the master once with this revision before merging. " +

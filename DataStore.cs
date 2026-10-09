@@ -23,6 +23,14 @@ public sealed class DataStore
     public string DataPath => Path.Combine(DataDirectory, "innasc-data.json");
     public string BackupPath => Path.Combine(DataDirectory, "innasc-data.backup.json");
 
+    public DataStore() { }
+
+    internal DataStore(string dataDirectory)
+    {
+        DataDirectory = dataDirectory;
+        LegacyDataDirectory = Path.Combine(dataDirectory, "Legacy");
+    }
+
     public AppData Load()
     {
         MigrateLegacyLocalData();
