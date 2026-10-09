@@ -18,6 +18,7 @@ internal sealed class GoogleDriveSyncForm : Form
   private readonly Button _checkout = UiTheme.PrimaryButton("Check out client…");
   private readonly Button _checkIn = UiTheme.PrimaryButton("Check in & push");
   private readonly Button _releaseCheckout = UiTheme.DangerButton("Release");
+  private readonly Button _recoverInventory = UiTheme.SecondaryButton("Recover missing records…");
   private string? _filePassword;
   private string? _operationPassword;
   private bool _forgetOperationPassword;
@@ -210,7 +211,7 @@ internal sealed class GoogleDriveSyncForm : Form
       WrapContents = false
     };
     foreach (var button in new[]
-         { _masterSignIn, _checkout, _checkIn, _releaseCheckout })
+         { _masterSignIn, _checkout, _checkIn, _releaseCheckout, _recoverInventory })
     {
       button.AutoSize = false;
       button.Height = 34;
@@ -219,12 +220,14 @@ internal sealed class GoogleDriveSyncForm : Form
     _checkout.Width = 142;
     _checkIn.Width = 132;
     _releaseCheckout.Width = 86;
+    _recoverInventory.Width = 218;
     _masterSignIn.Click += async (_, _) => await SignInToMasterAsync();
     _checkout.Click += async (_, _) => await CheckoutClientAsync();
     _checkIn.Click += async (_, _) => await CheckInClientAsync();
     _releaseCheckout.Click += async (_, _) => await ReleaseCheckoutAsync();
+    _recoverInventory.Click += async (_, _) => await RecoverInventoryAsync();
     masterActions.Controls.AddRange(
-      [_masterSignIn, _checkout, _checkIn, _releaseCheckout]);
+      [_masterSignIn, _checkout, _checkIn, _releaseCheckout, _recoverInventory]);
     _masterSignIn.Visible = false;
     _checkout.Visible = false;
     panel.Controls.Add(masterActions);
@@ -247,7 +250,13 @@ internal sealed class GoogleDriveSyncForm : Form
     _push.Dock = DockStyle.Fill;
     _push.Margin = new Padding(8, 0, 0, 0);
     _push.Font = UiTheme.Font(11, FontStyle.Bold);
-    _push.Click += async (_, _) => await PushAsync();
+    _push.Click += async (_, _) =>
+    {
+      if (_data.Settings.ActiveCheckoutClientId.HasValue)
+        await CheckInClientAsync();
+      else
+        await PushAsync();
+    };
     panel.Controls.Add(_pull, 0, 0);
     panel.Controls.Add(_push, 1, 0);
     return panel;
@@ -850,8 +859,20 @@ internal sealed class GoogleDriveSyncForm : Form
           MessageBoxIcon.Question,
           MessageBoxDefaultButton.Button2) != DialogResult.Yes)
         return;
-      var result = await GoogleDriveSyncService.CheckInClientAsync(
-        _data, _store, session, _operationPassword ?? _filePassword);
+      GoogleDriveSyncResult result;
+      try
+      {
+        result = await GoogleDriveSyncService.CheckInClientAsync(
+          _data, _store, session, _operationPassword ?? _filePassword);
+      }
+      catch (MergeResolutionRequiredException conflict)
+      {
+        using var resolver = new MergeConflictForm(conflict.Conflicts);
+        if (resolver.ShowDialog(this) != DialogResult.OK || resolver.Preference is null) return;
+        result = await GoogleDriveSyncService.CheckInClientAsync(
+          _data, _store, session, _operationPassword ?? _filePassword,
+          conflictPreference: resolver.Preference.Value);
+      }
       DataPulled = true;
       _details.Text = $"{clientName} was checked in and its lock was released.";
       MessageBox.Show(this,
@@ -859,6 +880,35 @@ internal sealed class GoogleDriveSyncForm : Form
         "Client checked in", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }, "The Google Drive client could not be checked in.");
   }
+  private async Task RecoverInventoryAsync()
+  {
+    if (_busy) return;
+    await RunBusyAsync(async () =>
+    {
+      var snapshot = await InspectWithPasswordAsync(prompt: true);
+      if (snapshot is null) return;
+      var session = await EnsureMasterSessionAsync(snapshot, forcePrompt: false);
+      if (session is null) return;
+      CheckoutInventoryService.RequireOwnership(_data, snapshot.Contents.Data, session, SyncTarget.GoogleDrive);
+      var clientId = _data.Settings.ActiveCheckoutClientId!.Value;
+      var fingerprint = CheckoutInventoryService.LocalFingerprint(_data);
+      var recovery = CheckoutInventoryService.PrepareRecovery(
+        _data.Clients.Single(client => client.Id == clientId),
+        snapshot.Contents.Data.Clients.Single(client => client.Id == clientId));
+      using var preview = new CheckoutRecoveryPreviewForm(recovery);
+      if (preview.ShowDialog(this) != DialogResult.OK) return;
+      // Ownership and source revision must still match after the modal preview.
+      var current = await GoogleDriveSyncService.InspectAsync(_data, _operationPassword ?? _filePassword);
+      CheckoutInventoryService.RequireOwnership(_data, current.Contents.Data, session, SyncTarget.GoogleDrive);
+      if (current.Fingerprint != snapshot.Fingerprint)
+        throw new SharedMasterConflictException("The company inventory changed during the preview. Review recovery again.");
+      CheckoutInventoryService.ApplyRecovery(_data, snapshot.Contents.Data, _store,
+        SyncTarget.GoogleDrive, snapshot.RawContents, recovery, fingerprint, _operationPassword ?? _filePassword);
+      DataPulled = true;
+      _details.Text = $"Recovered {recovery.AddedRecords.Count:N0} missing record(s). Local edits and checkout kept.";
+    }, "The missing records could not be recovered.");
+  }
+
   private async Task ReleaseCheckoutAsync()
   {
     if (_busy || !_data.Settings.ActiveCheckoutClientId.HasValue) return;
@@ -952,7 +1002,8 @@ internal sealed class GoogleDriveSyncForm : Form
     _fileState.Text = linked ? "Linked" : "Not linked";
     _fileState.ForeColor = linked ? UiTheme.Green : UiTheme.Muted;
     _pull.Enabled = signedIn && linked && !_busy && !checkoutActive;
-    _push.Enabled = signedIn && linked && !_busy && !checkoutActive;
+    _push.Enabled = signedIn && linked && !_busy && (!checkoutActive || googleCheckoutActive);
+    _push.Text = googleCheckoutActive ? "Check in & push to Google Drive" : "Merge & push to Google Drive";
     _connect.Enabled = configured && !_busy;
     _link.Enabled = signedIn && !_busy;
     _protection.Enabled = false;
@@ -961,6 +1012,7 @@ internal sealed class GoogleDriveSyncForm : Form
     _checkout.Enabled = false;
     _checkIn.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
     _releaseCheckout.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
+    _recoverInventory.Enabled = signedIn && linked && !_busy && googleCheckoutActive;
     _masterSignIn.Text = _masterSession is null ? "Master sign in" : _masterSession.DisplayName;
     if (_connectionOnly)
     {
@@ -969,6 +1021,7 @@ internal sealed class GoogleDriveSyncForm : Form
       _masterSignIn.Visible = false;
       _checkIn.Visible = false;
       _releaseCheckout.Visible = false;
+      _recoverInventory.Visible = false;
     }
     if (!configured)
       _details.Text = "Google requires an OAuth Desktop client for direct online access. " +

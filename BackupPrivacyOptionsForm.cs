@@ -48,12 +48,12 @@ internal sealed class BackupPrivacyOptionsForm : Form
         var cancel = UiTheme.SecondaryButton("Cancel");
         cancel.AutoSize = false;
         cancel.Size = new Size(86, 36);
-        cancel.Location = new Point(350, 260);
+        cancel.Location = new Point(300, 260);
         cancel.DialogResult = DialogResult.Cancel;
         var next = UiTheme.PrimaryButton("Continue");
         next.AutoSize = false;
-        next.Size = new Size(86, 36);
-        next.Location = new Point(446, 260);
+        next.Size = new Size(120, 36);
+        next.Location = new Point(396, 260);
         next.DialogResult = DialogResult.OK;
         Controls.AddRange([cancel, next]);
         AcceptButton = next;

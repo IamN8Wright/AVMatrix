@@ -337,7 +337,8 @@ internal static class SharedSyncService
         AppData data,
         DataStore store,
         MasterSession session,
-        string? password = null)
+        string? password = null,
+        MergeConflictPreference? conflictPreference = null)
     {
         var clientId = data.Settings.ActiveCheckoutClientId
             ?? throw new InvalidOperationException("No client is checked out on this PC.");
@@ -357,6 +358,18 @@ internal static class SharedSyncService
             throw new CheckoutOwnershipLostException(
                 "This checkout was released or booted by another technician. " +
                 "Your local work was not overwritten. Check out the client again to merge it safely.");
+
+        AppData? baseline = null;
+        try
+        {
+            baseline = SyncBaselineStore.Load(store, SyncTarget.SharedFile,
+                data.Settings.SharedMasterFingerprint, password);
+        }
+        catch (SharedMasterConflictException) { }
+        var remoteClient = remoteData.Clients.Single(client => client.Id == clientId);
+        localClient = CheckoutInventoryService.MergeForCheckIn(localClient, remoteClient,
+            baseline?.Clients.SingleOrDefault(client => client.Id == clientId),
+            data.Settings.ActiveCheckoutBaselineFingerprint, conflictPreference);
 
         var remoteRecovery = SaveRemoteRecoveryBackup(
             store, snapshot.RawContents, "Before-Client-Check-In");
@@ -603,10 +616,3 @@ internal sealed record ClientCheckoutResult(
     bool BootedPreviousCheckout,
     string RecoveryBackupPath,
     string SubmatrixLocation);
-
-internal sealed class SharedMasterConflictException : InvalidOperationException
-{
-    public SharedMasterConflictException(string message) : base(message)
-    {
-    }
-}

@@ -15,6 +15,7 @@ internal sealed class SharedSyncForm : Form
     private readonly Button _checkout = UiTheme.PrimaryButton("Check out client…");
     private readonly Button _checkIn = UiTheme.PrimaryButton("Check in & push");
     private readonly Button _releaseCheckout = UiTheme.DangerButton("Release checkout");
+    private readonly Button _recoverInventory = UiTheme.SecondaryButton("Recover missing records…");
     private string? _masterPassword;
     private MasterSession? _masterSession;
 
@@ -183,7 +184,7 @@ internal sealed class SharedSyncForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
         };
-        foreach (var button in new[] { _signIn, _checkout, _checkIn, _releaseCheckout })
+        foreach (var button in new[] { _signIn, _checkout, _checkIn, _releaseCheckout, _recoverInventory })
         {
             button.AutoSize = false;
             button.Height = 36;
@@ -192,11 +193,13 @@ internal sealed class SharedSyncForm : Form
         _checkout.Width = 142;
         _checkIn.Width = 132;
         _releaseCheckout.Width = 142;
+        _recoverInventory.Width = 218;
         _signIn.Click += (_, _) => SignInToMaster();
         _checkout.Click += (_, _) => CheckoutClient();
         _checkIn.Click += (_, _) => CheckInClient();
         _releaseCheckout.Click += (_, _) => ReleaseCheckout();
-        masterActions.Controls.AddRange([_signIn, _checkout, _checkIn, _releaseCheckout]);
+        _recoverInventory.Click += (_, _) => RecoverInventory();
+        masterActions.Controls.AddRange([_signIn, _checkout, _checkIn, _releaseCheckout, _recoverInventory]);
         _signIn.Visible = false;
         _checkout.Visible = false;
         panel.Controls.Add(masterActions);
@@ -222,7 +225,11 @@ internal sealed class SharedSyncForm : Form
         _push.Dock = DockStyle.Fill;
         _push.Margin = new Padding(8, 0, 0, 0);
         _push.Font = UiTheme.Font(11, FontStyle.Bold);
-        _push.Click += (_, _) => PushMaster();
+        _push.Click += (_, _) =>
+        {
+            if (_data.Settings.ActiveCheckoutClientId.HasValue) CheckInClient();
+            else PushMaster();
+        };
         panel.Controls.Add(_pull, 0, 0);
         panel.Controls.Add(_push, 1, 0);
         return panel;
@@ -570,7 +577,17 @@ internal sealed class SharedSyncForm : Form
                     MessageBoxIcon.Question,
                     MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
-            var result = SharedSyncService.CheckInClient(_data, _store, session, password);
+            SharedSyncResult result;
+            try
+            {
+                result = SharedSyncService.CheckInClient(_data, _store, session, password);
+            }
+            catch (MergeResolutionRequiredException conflict)
+            {
+                using var resolver = new MergeConflictForm(conflict.Conflicts);
+                if (resolver.ShowDialog(this) != DialogResult.OK || resolver.Preference is null) return;
+                result = SharedSyncService.CheckInClient(_data, _store, session, password, resolver.Preference.Value);
+            }
             DataPulled = true;
             RefreshMasterState();
             MessageBox.Show(this,
@@ -582,6 +599,34 @@ internal sealed class SharedSyncForm : Form
         {
             ShowError("The client could not be checked in.", exception);
         }
+    }
+
+    private void RecoverInventory()
+    {
+        try
+        {
+            var password = RequestPasswordIfNeeded(_data.Settings.SharedMasterPath);
+            var snapshot = SharedSyncService.Inspect(_data.Settings.SharedMasterPath, password);
+            var session = EnsureSession(snapshot.Contents.Data.MasterAccess, password);
+            if (session is null) return;
+            CheckoutInventoryService.RequireOwnership(_data, snapshot.Contents.Data, session, SyncTarget.SharedFile);
+            var clientId = _data.Settings.ActiveCheckoutClientId!.Value;
+            var fingerprint = CheckoutInventoryService.LocalFingerprint(_data);
+            var recovery = CheckoutInventoryService.PrepareRecovery(
+                _data.Clients.Single(client => client.Id == clientId),
+                snapshot.Contents.Data.Clients.Single(client => client.Id == clientId));
+            using var preview = new CheckoutRecoveryPreviewForm(recovery);
+            if (preview.ShowDialog(this) != DialogResult.OK) return;
+            var current = SharedSyncService.Inspect(_data.Settings.SharedMasterPath, password);
+            CheckoutInventoryService.RequireOwnership(_data, current.Contents.Data, session, SyncTarget.SharedFile);
+            if (current.Fingerprint != snapshot.Fingerprint)
+                throw new SharedMasterConflictException("The company inventory changed during the preview. Review recovery again.");
+            CheckoutInventoryService.ApplyRecovery(_data, snapshot.Contents.Data, _store,
+                SyncTarget.SharedFile, snapshot.RawContents, recovery, fingerprint, password);
+            DataPulled = true;
+            RefreshMasterState();
+        }
+        catch (Exception exception) { ShowError("The missing records could not be recovered.", exception); }
     }
 
     private void ReleaseCheckout()
@@ -618,13 +663,17 @@ internal sealed class SharedSyncForm : Form
         _path.Text = path;
         var linked = !string.IsNullOrWhiteSpace(path);
         var checkoutActive = _data.Settings.ActiveCheckoutClientId.HasValue;
+        var sharedCheckoutActive = checkoutActive &&
+            _data.Settings.ActiveCheckoutTarget == nameof(SyncTarget.SharedFile);
         _pull.Enabled = linked && !checkoutActive;
-        _push.Enabled = linked && !checkoutActive;
+        _push.Enabled = linked && (!checkoutActive || sharedCheckoutActive);
+        _push.Text = sharedCheckoutActive ? "Check in & push" : "Merge & push";
         _unlink.Enabled = linked;
         _signIn.Enabled = linked;
         _checkout.Enabled = linked && !checkoutActive && (_masterSession?.CanWrite ?? true);
-        _checkIn.Enabled = linked && checkoutActive;
-        _releaseCheckout.Enabled = linked && checkoutActive;
+        _checkIn.Enabled = linked && sharedCheckoutActive;
+        _releaseCheckout.Enabled = linked && sharedCheckoutActive;
+        _recoverInventory.Enabled = linked && sharedCheckoutActive;
         _signIn.Text = _masterSession is null ? "Sign in" : _masterSession.DisplayName;
         if (!linked)
         {

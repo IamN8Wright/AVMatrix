@@ -1307,18 +1307,18 @@ public sealed class MainForm : Form
         {
             // Keep unfinished checkout data when an older installation has no ancestor.
         }
-        CheckoutResumeService.RefreshInventory(_data, remote, baseline);
+        var baselineAdvanced = CheckoutResumeService.RefreshInventory(_data, remote, baseline);
         _data.MasterAccess = MasterAccessService.Clone(access);
         _data.Settings.MasterWorkspaceReadOnly = false;
-        SyncBaselineStore.Save(_store, target, masterContents);
+        if (baselineAdvanced) SyncBaselineStore.Save(_store, target, masterContents);
         if (target == SyncTarget.GoogleDrive)
         {
-            _data.Settings.GoogleDriveFingerprint = masterFingerprint;
+            if (baselineAdvanced) _data.Settings.GoogleDriveFingerprint = masterFingerprint;
             _data.Settings.GoogleDriveRemoteChangesDetected = false;
         }
         else
         {
-            _data.Settings.SharedMasterFingerprint = masterFingerprint;
+            if (baselineAdvanced) _data.Settings.SharedMasterFingerprint = masterFingerprint;
         }
         _store.Save(_data);
         return true;

@@ -10,6 +10,9 @@ For tests only, run `Run-QC.cmd -TestsOnly`. GitHub runs portable inventory QC o
 
 - Login against fresh master data: Providence/CSC shows all three rooms without a manual Pull.
 - Resume an owned checkout: receive remote added rooms and other clients; retain unpushed edits, deletions, configuration-file bytes and the ownership token. If there is no valid merge ancestor, retain the checkout and do not guess how to reconcile deleted rooms.
+- Legacy baseline filenames: read both SharedMasterBaseline.avmatrix and GoogleDriveMasterBaseline.avmatrix when the new filename is absent; require the expected byte fingerprint.
+- Check-in from a stale client: combine remote room/device additions with local edits and configuration payloads. Preserve known intentional deletions, ask about overlapping fields, and reject an ambiguous missing ancestor before publishing. The main action must offer Check in & push for this backend's checkout.
+- Missing-record recovery: preview exact additions, retain existing local records/fields/configuration bytes and checkout ownership, save the previous inventory, and reject stale previews or lost ownership. The recovered records must survive subsequent login and check-in. Never label an inventory recovery preview as automatic deletion reconciliation.
 - Plain push and merged push: refresh tree/grid/current client after either result. Preserve selected client/location/room IDs; show the parent client path and device counts.
 - Counts: add three records to 169 and check the company total is 172 in the footer, license usage and merge preview. Room/filter totals must be labeled separately. Interface detail rows do not count as devices.
 - Editing during a cloud upload: after serialization, add/edit/delete inventory; verify upload completion retains that later work and marks it pending for the next push.

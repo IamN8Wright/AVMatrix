@@ -60,9 +60,11 @@ internal static class LiveCoauthoringService
                 {
                     // An unfinished checkout must survive a missing merge ancestor.
                 }
-                CheckoutResumeService.RefreshInventory(data, snapshot.Contents.Data, baseline);
-                SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, snapshot.RawContents);
-                data.Settings.GoogleDriveFingerprint = snapshot.Fingerprint;
+                if (CheckoutResumeService.RefreshInventory(data, snapshot.Contents.Data, baseline))
+                {
+                    SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, snapshot.RawContents);
+                    data.Settings.GoogleDriveFingerprint = snapshot.Fingerprint;
+                }
             }
             data.MasterAccess = MasterAccessService.Clone(snapshot.Contents.Data.MasterAccess);
             data.Settings.GoogleDriveRemoteChangesDetected = false;

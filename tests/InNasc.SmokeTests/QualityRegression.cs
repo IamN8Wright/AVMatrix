@@ -97,7 +97,166 @@ internal static class QualityRegression
             "A missing ancestor must not erase unfinished checkout work.");
 
         RunImportRegression();
+        RunCheckoutRecoveryRegression();
         Console.WriteLine("QC passed: scope rebinding, 169/172 counts, late upload edits, checkout resume, 240 sync cycles, import identity and preview races.");
+    }
+
+    private static void RunCheckoutRecoveryRegression()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "InNasc-Checkout-QC-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var store = new DataStore(Path.Combine(root, "Workstation"));
+            var before = Inventory(1);
+            var access = before.MasterAccess;
+            MasterAccessService.CreateInitialOwner(access, "qc-owner", "QC", "QC-Checkout-password-534");
+            var session = MasterAccessService.SignIn(access, "qc-owner", "QC-Checkout-password-534");
+            var path = Path.Combine(root, "Company.nasc");
+            PortableDataService.ExportMaster(path, before, session);
+            var local = new AppData();
+            local.Settings.SharedMasterPath = path;
+            SharedSyncService.Pull(local, store, session.MasterKey, session);
+            var id = before.Clients[0].Id;
+            SharedSyncService.CheckoutClient(local, store, id, session, false, session.MasterKey);
+            var token = local.Settings.ActiveCheckoutToken;
+            local.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Keep local edit";
+            local.Clients[0].Locations[0].Rooms[0].Equipment[0].ConfigurationFiles.Add(
+                new DeviceConfigurationFile { FileName = "local.cfg", ContentIncluded = true, ContentBase64 = "AQID" });
+            var remote = PortableDataService.Import(path, session.MasterKey).Data;
+            remote.Clients[0].Locations[0].Rooms.Add(new RoomRecord { Name = "Remote added room", Equipment = Devices(2) });
+            PortableDataService.ExportMaster(path, remote, session);
+            SharedSyncService.CheckInClient(local, store, session, session.MasterKey);
+            Assert(local.Clients[0].Locations[0].Rooms.Count == 2 && DeviceLimitPolicy.CountDevices(local) == 3,
+                "Check-in must retain remote rooms and devices, rather than replacing them with the stale local client.");
+            var package = ClientSubmatrixService.ReadClientPackage(
+                File.ReadAllBytes(ClientSubmatrixService.SharedClientPath(path, id)), id, session.MasterKey);
+            Assert(package.Locations[0].Rooms[0].Equipment[0].Notes == "Keep local edit" &&
+                package.Locations[0].Rooms[0].Equipment[0].ConfigurationFiles[0].ContentBase64 == "AQID",
+                "Check-in lost local edits or configuration payloads.");
+            Assert(!local.Settings.ActiveCheckoutClientId.HasValue,
+                "Successful check-in must release local checkout ownership.");
+
+            SharedSyncService.CheckoutClient(local, store, id, session, false, session.MasterKey);
+            local.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Second local edit";
+            var conflicting = PortableDataService.Import(path, session.MasterKey).Data;
+            conflicting.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Remote conflicting edit";
+            PortableDataService.ExportMaster(path, conflicting, session);
+            var beforeConflict = File.ReadAllBytes(path);
+            var asked = false;
+            try { SharedSyncService.CheckInClient(local, store, session, session.MasterKey); }
+            catch (MergeResolutionRequiredException) { asked = true; }
+            Assert(asked && File.ReadAllBytes(path).SequenceEqual(beforeConflict) &&
+                local.Settings.ActiveCheckoutClientId == id,
+                "Overlapping check-in fields must require a decision without changing the master or releasing checkout.");
+            SharedSyncService.CheckInClient(local, store, session, session.MasterKey, MergeConflictPreference.ThisPc);
+            Assert(local.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes == "Second local edit",
+                "Explicit check-in resolution did not preserve the chosen local value.");
+
+            // AV Matrix installations may still store the baseline under its old name.
+            foreach (var target in new[] { SyncTarget.SharedFile, SyncTarget.GoogleDrive })
+            {
+                var bytes = File.ReadAllBytes(path);
+                SyncBaselineStore.Save(store, target, bytes);
+                var currentPath = target == SyncTarget.SharedFile
+                    ? SyncBaselineStore.SharedPath(store) : SyncBaselineStore.GoogleDrivePath(store);
+                var legacyPath = Path.Combine(store.DataDirectory, target == SyncTarget.SharedFile
+                    ? "SharedMasterBaseline.avmatrix" : "GoogleDriveMasterBaseline.avmatrix");
+                File.Move(currentPath, legacyPath);
+                Assert(SyncBaselineStore.Load(store, target, SyncBaselineStore.Fingerprint(bytes), session.MasterKey)
+                    .Clients[0].Locations[0].Rooms.Count == 2, "Legacy baseline filenames must remain readable.");
+                var rejected = false;
+                try { SyncBaselineStore.Load(store, target, "wrong-fingerprint", session.MasterKey); }
+                catch (SharedMasterConflictException) { rejected = true; }
+                Assert(rejected, "A legacy baseline still must match the exact expected fingerprint.");
+                SyncBaselineStore.Delete(store, target);
+            }
+
+            var noAncestor = Inventory(1);
+            var expanded = Clone(noAncestor);
+            expanded.Clients[0].Locations[0].Rooms.Add(new RoomRecord { Name = "Missing room", Equipment = Devices(2) });
+            noAncestor.Settings.ActiveCheckoutClientId = noAncestor.Clients[0].Id;
+            noAncestor.Settings.ActiveCheckoutToken = token;
+            noAncestor.Settings.ActiveCheckoutTarget = nameof(SyncTarget.SharedFile);
+            noAncestor.Settings.ActiveCheckoutBaselineFingerprint = SyncContentFingerprint.ComputeClient(noAncestor.Clients[0]);
+            Assert(CheckoutResumeService.RefreshInventory(noAncestor, expanded, null) &&
+                noAncestor.Clients[0].Locations[0].Rooms.Count == 2,
+                "An unchanged checkout must receive missing rooms even without a baseline file.");
+
+            var edited = Inventory(1);
+            edited.Settings.ActiveCheckoutClientId = edited.Clients[0].Id;
+            edited.Settings.ActiveCheckoutToken = token;
+            edited.Settings.ActiveCheckoutTarget = nameof(SyncTarget.SharedFile);
+            edited.Settings.ActiveCheckoutBaselineFingerprint = SyncContentFingerprint.ComputeClient(edited.Clients[0]);
+            var editedRemote = Clone(edited);
+            editedRemote.Clients[0].Locations[0].Rooms.Add(new RoomRecord { Name = "Recover me", Equipment = Devices(2) });
+            edited.Clients[0].Locations[0].Rooms[0].Equipment[0].Notes = "Unfinished local work";
+            var previousCheckoutFingerprint = edited.Settings.ActiveCheckoutBaselineFingerprint;
+            Assert(!CheckoutResumeService.RefreshInventory(edited, editedRemote, null) &&
+                edited.Settings.ActiveCheckoutBaselineFingerprint == previousCheckoutFingerprint,
+                "Ambiguous checkout refresh must not silently adopt an ancestor and imply deletions.");
+            var blocked = false;
+            try { CheckoutInventoryService.MergeForCheckIn(edited.Clients[0], editedRemote.Clients[0], null,
+                edited.Settings.ActiveCheckoutBaselineFingerprint); }
+            catch (SharedMasterConflictException) { blocked = true; }
+            Assert(blocked, "Checking in an ambiguous incomplete checkout must preserve both sides.");
+            var recovery = CheckoutInventoryService.PrepareRecovery(edited.Clients[0], editedRemote.Clients[0]);
+            Assert(recovery.AddedRecords.Count == 3 && recovery.Client.Locations[0].Rooms.Count == 2,
+                "Recovery must preview the missing room and its two devices.");
+            Assert(recovery.Client.Locations[0].Rooms[0].Equipment[0].Notes == "Unfinished local work" &&
+                edited.Clients[0].Locations[0].Rooms.Count == 1,
+                "Recovery preview must keep edits and leave live inventory untouched.");
+            var bytesForRecovery = PortableDataService.ExportBytes(editedRemote, session.MasterKey, out _);
+            var fingerprint = CheckoutInventoryService.LocalFingerprint(edited);
+            var stale = Clone(edited);
+            stale.Clients[0].Locations[0].Rooms[0].Equipment[0].ConfigurationFiles.Add(
+                new DeviceConfigurationFile { FileName = "late.cfg", ContentIncluded = true, ContentBase64 = "BAUG" });
+            var rejectedPreview = false;
+            try { CheckoutInventoryService.ApplyRecovery(stale, editedRemote, store, SyncTarget.SharedFile,
+                bytesForRecovery, recovery, fingerprint, session.MasterKey); }
+            catch (InvalidOperationException) { rejectedPreview = true; }
+            Assert(rejectedPreview && stale.Clients[0].Locations[0].Rooms.Count == 1 &&
+                stale.Settings.ActiveCheckoutToken == token,
+                "A changed configuration payload must invalidate recovery before any inventory or ownership mutation.");
+            var ownershipRemote = Clone(editedRemote);
+            ownershipRemote.MasterAccess = MasterAccessService.Clone(access);
+            ownershipRemote.MasterAccess.Checkouts.Add(new ClientCheckoutRecord
+            {
+                ClientId = edited.Clients[0].Id, UserId = session.UserId, CheckoutToken = token!.Value
+            });
+            CheckoutInventoryService.RequireOwnership(edited, ownershipRemote, session, SyncTarget.SharedFile);
+            ownershipRemote.MasterAccess.Checkouts[0].CheckoutToken = Guid.NewGuid();
+            var rejectedOwner = false;
+            try { CheckoutInventoryService.RequireOwnership(edited, ownershipRemote, session, SyncTarget.SharedFile); }
+            catch (InvalidOperationException) { rejectedOwner = true; }
+            Assert(rejectedOwner, "Recovery must reject a checkout taken over by another PC.");
+            CheckoutInventoryService.ApplyRecovery(edited, editedRemote, store, SyncTarget.SharedFile,
+                bytesForRecovery, recovery, fingerprint, session.MasterKey);
+            Assert(edited.Settings.ActiveCheckoutToken == token && DeviceLimitPolicy.CountDevices(edited) == 3,
+                "Recovery must retain checkout ownership and all recovered devices.");
+            var merged = CheckoutInventoryService.MergeForCheckIn(edited.Clients[0], editedRemote.Clients[0],
+                SyncBaselineStore.Load(store, SyncTarget.SharedFile, edited.Settings.SharedMasterFingerprint, session.MasterKey)
+                    .Clients[0], edited.Settings.ActiveCheckoutBaselineFingerprint);
+            Assert(merged.Locations[0].Rooms.Count == 2 &&
+                merged.Locations[0].Rooms[0].Equipment[0].Notes == "Unfinished local work",
+                "Recovered records and local edits must survive the next check-in merge.");
+            var backup = Directory.GetFiles(Path.Combine(store.DataDirectory, "CheckoutRecoveryBackups"), "*.nasc").Single();
+            Assert(PortableDataService.Import(backup, session.MasterKey).Data.Clients[0].Locations[0].Rooms.Count == 1,
+                "Recovery must save the exact prior inventory in an encrypted backup.");
+
+            var deletionBaseline = Clone(editedRemote);
+            var withDeletion = Clone(deletionBaseline);
+            withDeletion.Clients[0].Locations[0].Rooms.RemoveAt(1);
+            var newer = Clone(deletionBaseline);
+            newer.Clients[0].Locations[0].Rooms.Add(new RoomRecord { Name = "Independent addition" });
+            var deletedMerge = CheckoutInventoryService.MergeForCheckIn(withDeletion.Clients[0], newer.Clients[0],
+                deletionBaseline.Clients[0], "");
+            Assert(deletedMerge.Locations[0].Rooms.All(room => room.Name != "Recover me") &&
+                deletedMerge.Locations[0].Rooms.Any(room => room.Name == "Independent addition"),
+                "A known local deletion and independent remote addition must both survive check-in.");
+            Console.WriteLine("Checkout QC passed: shared-file check-in, remote additions, config bytes, legacy baselines, missing-ancestor login, explicit recovery and intentional deletions.");
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     private static void RunImportRegression()

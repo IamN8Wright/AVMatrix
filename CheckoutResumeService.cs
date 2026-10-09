@@ -4,7 +4,7 @@ internal static class CheckoutResumeService
 {
     // Refresh the company while retaining this PC's unfinished checked-out work.
     // The last downloaded master is the ancestor, not the current local checkout.
-    public static void RefreshInventory(AppData local, AppData remote, AppData? baseline)
+    public static bool RefreshInventory(AppData local, AppData remote, AppData? baseline)
     {
         var clientId = local.Settings.ActiveCheckoutClientId
             ?? throw new InvalidOperationException("There is no checkout to resume.");
@@ -13,6 +13,13 @@ internal static class CheckoutResumeService
         var remoteOwned = remote.Clients.SingleOrDefault(client => client.Id == clientId)
             ?? throw new InvalidOperationException("The checked-out client is missing from the company file.");
         var before = baseline?.Clients.SingleOrDefault(client => client.Id == clientId);
+        var checkoutFingerprint = local.Settings.ActiveCheckoutBaselineFingerprint;
+        if (before is null && string.Equals(SyncContentFingerprint.ComputeClient(remoteOwned),
+                checkoutFingerprint, StringComparison.OrdinalIgnoreCase))
+            before = remoteOwned;
+        if (before is null && string.Equals(SyncContentFingerprint.ComputeClient(owned),
+                checkoutFingerprint, StringComparison.OrdinalIgnoreCase))
+            before = owned;
         var refreshedOwned = ClientSubmatrixService.CloneClient(owned);
         if (before is not null)
         {
@@ -30,5 +37,6 @@ internal static class CheckoutResumeService
             ? refreshedOwned : ClientSubmatrixService.MetadataOnly(client)).ToList();
         if (before is not null)
             local.Settings.ActiveCheckoutBaselineFingerprint = SyncContentFingerprint.ComputeClient(remoteOwned);
+        return before is not null;
     }
 }
