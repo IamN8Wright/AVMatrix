@@ -1977,10 +1977,13 @@ public sealed class MainForm : Form
         _aboutButton.Visible = true;
         _aboutBackButton.Visible = !signedIn && _aboutPage.Visible;
         _adminPanel.Visible = active is not null && !_masterWelcomePage.Visible;
-        _manageUsersButton.Visible = active?.Session.IsOwner == true;
+        var canManageUsers = active?.Session.IsOwner == true;
+        _manageUsersButton.Visible = canManageUsers;
         _manageUsersButton.Enabled = !_managingAccounts && !_checkoutInProgress;
-        _adminPanel.Height = _manageUsersButton.Visible ? 114 : 70;
-        _logoutButton.Top = _manageUsersButton.Visible ? 67 : 25;
+        // Visible includes the parent's visibility and is false during startup.
+        // Derive layout from the permission, so the two buttons never overlap.
+        _adminPanel.Height = canManageUsers ? 114 : 70;
+        _logoutButton.Top = canManageUsers ? 67 : 25;
         _logoutButton.Enabled = !_managingAccounts;
         _syncButton.Enabled = !_managingAccounts;
         _settingsButton.Enabled = !_managingAccounts;
