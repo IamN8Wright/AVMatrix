@@ -324,7 +324,8 @@ public sealed class MainForm : Form
         _logoutButton = UiTheme.SidebarButton("Log out");
         _logoutButton.AutoSize = false;
         _logoutButton.Location = new Point(0, 25);
-        _logoutButton.Size = new Size(244, 36);
+        _logoutButton.Size = new Size(_adminPanel.ClientSize.Width, 36);
+        _logoutButton.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _logoutButton.Margin = Padding.Empty;
         _logoutButton.Click += async (_, _) => await LogoutAsync();
         _toolTip.SetToolTip(_logoutButton, "Log out of this company workspace");
@@ -333,7 +334,8 @@ public sealed class MainForm : Form
         _manageUsersButton.Name = "ManageCompanyUsers";
         _manageUsersButton.AutoSize = false;
         _manageUsersButton.Location = new Point(0, 25);
-        _manageUsersButton.Size = new Size(244, 36);
+        _manageUsersButton.Size = new Size(_adminPanel.ClientSize.Width, 36);
+        _manageUsersButton.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _manageUsersButton.Click += async (_, _) => await ManageCompanyUsersAsync();
         _adminPanel.Controls.Add(_manageUsersButton);
 

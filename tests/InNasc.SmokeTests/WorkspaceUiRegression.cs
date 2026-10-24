@@ -394,12 +394,12 @@ internal static class WorkspaceUiRegression
         Control current = form;
         while (current.GetChildAtPoint(current.PointToClient(screenPoint), GetChildAtPointSkip.Invisible) is Control child)
             current = child;
-        Assert(current == button, "Another control covers the sync action's click target.");
+        Assert(current == button, $"Another control ({current.GetType().Name}: {current.Text}) covers {button.Text}.");
         Assert(form.ClientRectangle.Contains(form.PointToClient(screenPoint)), "The sync action falls outside the dialog.");
         var screenBounds = button.RectangleToScreen(button.ClientRectangle);
         for (Control? parent = button.Parent; parent is not null; parent = parent.Parent)
             Assert(parent.ClientRectangle.Contains(parent.RectangleToClient(screenBounds)),
-                "A sync action is clipped by its parent layout or cannot be scrolled into view.");
+                $"{button.Text} is clipped by {parent.GetType().Name}: bounds {parent.RectangleToClient(screenBounds)}, client {parent.ClientRectangle}.");
     }
     private static T Field<T>(object form, string name) => (T)typeof(MainForm)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
