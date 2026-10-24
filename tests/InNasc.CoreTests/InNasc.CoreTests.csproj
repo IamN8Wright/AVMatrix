@@ -27,5 +27,6 @@
     <Compile Include="../../DeviceLimitPolicy.cs" Link="DeviceLimitPolicy.cs" />
     <Compile Include="../../ExcelImportMergeService.cs" Link="ExcelImportMergeService.cs" />
     <Compile Include="../InNasc.SmokeTests/QualityRegression.cs" Link="QualityRegression.cs" />
+    <Compile Include="../InNasc.SmokeTests/CompanyUserManagementRegression.cs" Link="CompanyUserManagementRegression.cs" />
   </ItemGroup>
 </Project>

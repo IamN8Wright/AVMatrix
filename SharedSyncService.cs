@@ -215,11 +215,17 @@ internal static class SharedSyncService
         MasterAccessControl updatedAccess,
         MasterSession? session,
         bool initialSetup,
-        string? password = null)
+        string? password = null,
+        string? expectedFingerprint = null,
+        bool preserveInventoryBaseline = false)
     {
         var path = ValidatePath(data.Settings.SharedMasterPath);
         using var masterLock = AcquireLock(path);
         var snapshot = Inspect(path, password);
+        if (expectedFingerprint is not null && !string.Equals(expectedFingerprint,
+                snapshot.Fingerprint, StringComparison.OrdinalIgnoreCase))
+            throw new SharedMasterConflictException(
+                "The company file changed while Manage users was open. No accounts were overwritten. Reopen Manage users and try again.");
         var remoteData = snapshot.Contents.Data;
         if (initialSetup)
         {
@@ -237,6 +243,8 @@ internal static class SharedSyncService
                 remoteData.MasterAccess,
                 updatedAccess,
                 session!);
+        if (!initialSetup && session?.IsOwner == true)
+            MasterAccessService.RequireOwner(remoteData.MasterAccess, session);
         MasterAccessService.ValidateForSave(accessToSave);
         remoteData.MasterAccess = accessToSave;
         var writingSession = session ?? throw new MasterAuthorizationException(
@@ -247,9 +255,14 @@ internal static class SharedSyncService
             writingSession);
         var saved = Inspect(path, writingSession.MasterKey);
         data.MasterAccess = MasterAccessService.Clone(saved.Contents.Data.MasterAccess);
-        data.Settings.SharedMasterFingerprint = saved.Fingerprint;
-        data.Settings.SharedMasterLastSyncUtc = DateTime.UtcNow;
-        SyncBaselineStore.Save(store, SyncTarget.SharedFile, saved.RawContents);
+        // An account-only update must not advance the inventory merge ancestor:
+        // this PC may still have old rooms, local edits or configuration payloads.
+        if (!preserveInventoryBaseline)
+        {
+            data.Settings.SharedMasterFingerprint = saved.Fingerprint;
+            data.Settings.SharedMasterLastSyncUtc = DateTime.UtcNow;
+            SyncBaselineStore.Save(store, SyncTarget.SharedFile, saved.RawContents);
+        }
         store.Save(data);
         return Result(saved, initialSetup ? "Owner configured" : "Accounts updated");
     }

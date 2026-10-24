@@ -139,7 +139,10 @@ internal sealed class MasterSignInNotification : Form
         notification._closeTimer.Start();
     }
 
-    public static string RoleText(MasterUserRole role) => role == MasterUserRole.ReadOnly
-        ? "Read-only"
-        : role.ToString();
+    public static string RoleText(MasterUserRole role) => role switch
+    {
+        MasterUserRole.Owner => "Admin",
+        MasterUserRole.Tech => "User",
+        _ => "Read-only"
+    };
 }

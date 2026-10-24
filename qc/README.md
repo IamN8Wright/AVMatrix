@@ -8,6 +8,7 @@ For tests only, run `Run-QC.cmd -TestsOnly`. GitHub runs portable inventory QC o
 
 ## Required release cases
 
+- Company users: an Admin can click Manage users after company login, save new logins and selected/all-client scope, and regular users cannot manage accounts. Admins access every current/future client. Stale or revoked admin saves must be rejected. Saving users must retain local device/configuration edits and the original inventory baseline; subsequent check-in must combine them with remote additions. Test the actual editor entry/save controls and role labels.
 - Both connections configured: clicking the actual sidebar sync button must open the unfinished checkout/signed-in workspace backend, with its check-in action enabled when linked. Viewing a zero-checkout Google copy from a file checkout must not replace the file workspace's checkout/access data or save its local data/baseline. Welcome must remember an available previously selected Google connection even when an older local link exists.
 - Sync controls: disconnected/missing-link/busy/setup-only states must look unavailable and state the reason. Connected controls must restore their enabled style, support keyboard focus, and have unobstructed click targets. Checkout controls appear only for the matching backend. Literal ampersands must be visible in action labels.
 - Login against fresh master data: Providence/CSC shows all three rooms without a manual Pull.

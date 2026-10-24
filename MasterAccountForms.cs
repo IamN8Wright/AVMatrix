@@ -214,7 +214,7 @@ internal sealed class MasterUserManagementForm : Form
     private readonly IReadOnlyList<ClientRecord> _clients;
     private readonly ListView _users = new();
 
-    public MasterAccessControl ResultAccess { get; }
+    public MasterAccessControl ResultAccess { get; private set; }
 
     public MasterUserManagementForm(
         MasterAccessControl access,
@@ -224,10 +224,10 @@ internal sealed class MasterUserManagementForm : Form
         _session = session;
         _clients = clients.OrderBy(client => client.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         ResultAccess = MasterAccessService.Clone(access);
-        Text = "Master accounts";
+        Text = "Company users";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(920, 530);
-        Size = new Size(1080, 600);
+        MinimumSize = new Size(920, 600);
+        Size = new Size(1080, 680);
         BackColor = UiTheme.Canvas;
         Font = UiTheme.Font();
         Icon = AppBrand.CreateIcon();
@@ -241,13 +241,13 @@ internal sealed class MasterUserManagementForm : Form
         };
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
         var heading = new Panel { Dock = DockStyle.Fill };
-        heading.Controls.Add(MasterSignInForm.Heading("Master accounts", 0, 0));
+        heading.Controls.Add(MasterSignInForm.Heading("Company users", 0, 0));
         heading.Controls.Add(MasterSignInForm.Description(
             session.IsOwner
-                ? "Owners manage logins. Every signed-in user can see who has access and change their own password."
-                : "Everyone with access is listed below. You can change your own password; only an Owner can add or edit accounts.",
+                ? "Admins manage users and access every client. Users can be assigned selected clients or all current and future clients."
+                : "You can change your own password. Only a company Admin can add users or change client access.",
             2, 38, 960, 34));
         shell.Controls.Add(heading, 0, 0);
 
@@ -274,14 +274,16 @@ internal sealed class MasterUserManagementForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 10, 0, 0)
         };
-        var add = UiTheme.PrimaryButton("＋ Add account");
+        var add = UiTheme.PrimaryButton("＋ Add user");
+        add.Name = "CompanyAddUser";
         add.Click += (_, _) => AddAccount();
         var edit = UiTheme.SecondaryButton("Edit");
         edit.Click += (_, _) => EditAccount();
         var clientAccess = UiTheme.SecondaryButton("Client access…");
+        clientAccess.Name = "CompanyClientAccess";
         clientAccess.Click += (_, _) => EditClientAccess();
         var reset = UiTheme.SecondaryButton("Reset password");
         reset.Click += (_, _) => ResetPassword();
@@ -297,10 +299,13 @@ internal sealed class MasterUserManagementForm : Form
         var spacer = new Panel { Width = _session.IsOwner ? 20 : 240, Height = 1 };
         var cancel = UiTheme.SecondaryButton("Cancel");
         cancel.DialogResult = DialogResult.Cancel;
-        var save = UiTheme.PrimaryButton("Save accounts");
+        var save = UiTheme.PrimaryButton("Save users");
+        save.Name = "SaveCompanyUsers";
         save.DialogResult = DialogResult.OK;
         panel.Controls.AddRange(
             [add, edit, clientAccess, reset, delete, changeMine, spacer, cancel, save]);
+        AcceptButton = save;
+        CancelButton = cancel;
         return panel;
     }
 
@@ -310,7 +315,7 @@ internal sealed class MasterUserManagementForm : Form
         if (user.Role == MasterUserRole.Owner)
         {
             MessageBox.Show(this,
-                "Owners always have access to every current and future client.",
+                "Admins always have access to every current and future client.",
                 "Client access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -363,7 +368,7 @@ internal sealed class MasterUserManagementForm : Form
                 passwords.Value.CurrentPassword,
                 passwords.Value.NewPassword);
             MessageBox.Show(this,
-                "Your password will be updated when you click Save accounts.",
+                "Your password will be updated when you click Save users.",
                 "Company access",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -380,13 +385,22 @@ internal sealed class MasterUserManagementForm : Form
         if (editor.ShowDialog(this) != DialogResult.OK) return;
         try
         {
+            var draft = MasterAccessService.Clone(ResultAccess);
             var user = MasterAccessService.AddUser(
-                ResultAccess,
+                draft,
                 _session,
                 editor.Username,
                 editor.DisplayName,
                 editor.Password!,
                 editor.Role);
+            if (user.Role != MasterUserRole.Owner)
+            {
+                using var clientAccess = new MasterClientAccessForm(user, _clients);
+                if (clientAccess.ShowDialog(this) != DialogResult.OK) return;
+                MasterAccessService.UpdateClientAccess(draft, _session, user.Id,
+                    clientAccess.HasAllClientAccess, clientAccess.SelectedClientIds);
+            }
+            ResultAccess = draft;
             RefreshUsers(user.Id);
         }
         catch (Exception exception)
@@ -478,7 +492,7 @@ internal sealed class MasterUserManagementForm : Form
         {
             var item = new ListViewItem(user.Username) { Tag = user };
             item.SubItems.Add(user.DisplayName);
-            item.SubItems.Add(user.Role == MasterUserRole.ReadOnly ? "Read-only" : user.Role.ToString());
+            item.SubItems.Add(MasterSignInNotification.RoleText(user.Role));
             item.SubItems.Add(ClientAccessText(user));
             item.SubItems.Add(user.Enabled ? "Enabled" : "Disabled");
             _users.Items.Add(item);
@@ -488,7 +502,7 @@ internal sealed class MasterUserManagementForm : Form
 
     private string ClientAccessText(MasterUserRecord user)
     {
-        if (user.Role == MasterUserRole.Owner) return "All clients (Owner)";
+        if (user.Role == MasterUserRole.Owner) return "All clients (Admin)";
         if (user.HasAllClientAccess) return "All current & future";
         var availableIds = _clients.Select(client => client.Id).ToHashSet();
         var count = user.ClientAccessIds.Count(availableIds.Contains);
@@ -714,6 +728,11 @@ internal sealed class MasterUserEditorForm : Form
         _role.Size = new Size(210, 29);
         _role.DropDownStyle = ComboBoxStyle.DropDownList;
         _role.Items.AddRange(Enum.GetValues<MasterUserRole>().Cast<object>().ToArray());
+        _role.FormattingEnabled = true;
+        _role.Format += (_, args) =>
+        {
+            if (args.ListItem is MasterUserRole role) args.Value = MasterSignInNotification.RoleText(role);
+        };
         _role.SelectedItem = user?.Role ?? MasterUserRole.Tech;
         UiTheme.ConfigureUniformComboBox(_role);
         Controls.Add(_role);
