@@ -46,6 +46,7 @@ public sealed class MainForm : Form
     private Button _homeButton = null!;
     private Button _scannerButton = null!;
     private Button _logoutButton = null!;
+    private Button _manageUsersButton = null!;
     private Button _settingsButton = null!;
     private Button _aboutButton = null!;
     private Button _aboutBackButton = null!;
@@ -61,6 +62,7 @@ public sealed class MainForm : Form
     private bool _loadingNics;
     private bool _monitoring;
     private bool _checkoutInProgress;
+    private bool _managingAccounts;
     private string _liveCoauthoringStatus = string.Empty;
     private string _sortColumn = "Description";
     private bool _sortAscending = true;
@@ -327,6 +329,13 @@ public sealed class MainForm : Form
         _logoutButton.Click += async (_, _) => await LogoutAsync();
         _toolTip.SetToolTip(_logoutButton, "Log out of this company workspace");
         _adminPanel.Controls.Add(_logoutButton);
+        _manageUsersButton = UiTheme.SidebarButton("Manage users");
+        _manageUsersButton.Name = "ManageCompanyUsers";
+        _manageUsersButton.AutoSize = false;
+        _manageUsersButton.Location = new Point(0, 25);
+        _manageUsersButton.Size = new Size(244, 36);
+        _manageUsersButton.Click += async (_, _) => await ManageCompanyUsersAsync();
+        _adminPanel.Controls.Add(_manageUsersButton);
 
         sidebar.Controls.Add(_tree);
         sidebar.Controls.Add(_adminPanel);
@@ -1498,6 +1507,75 @@ public sealed class MainForm : Form
             : new SharedSyncForm(_data, _store);
     }
 
+    private async Task ManageCompanyUsersAsync()
+    {
+        var active = MasterSessionContext.Current;
+        if (_managingAccounts || _checkoutInProgress || active is null) return;
+        var gateHeld = false;
+        _managingAccounts = true;
+        RefreshMasterSessionUi();
+        try
+        {
+            var connectionKey = active.Target == SyncTarget.GoogleDrive
+                ? _data.Settings.GoogleDriveFileId : _data.Settings.SharedMasterPath;
+            if (MasterSessionContext.Get(active.Target, connectionKey) != active.Session)
+                throw new InvalidOperationException("The company connection changed. Sign in to the company again before managing users.");
+            // Finish any in-flight sync before reading the company for the editor.
+            // Keep live sync paused until this modal account update is complete.
+            await _liveCoauthoringGate.WaitAsync(_lifetimeCancellation.Token);
+            gateHeld = true;
+            AppData remote;
+            string fingerprint;
+            if (active.Target == SyncTarget.GoogleDrive)
+            {
+                var snapshot = await GoogleDriveSyncService.InspectAsync(
+                    _data, active.Session.MasterKey, _lifetimeCancellation.Token);
+                remote = snapshot.Contents.Data;
+                fingerprint = snapshot.Fingerprint;
+            }
+            else
+            {
+                var snapshot = SharedSyncService.Inspect(active.MasterKey, active.Session.MasterKey);
+                remote = snapshot.Contents.Data;
+                fingerprint = snapshot.Fingerprint;
+            }
+            if (MasterSessionContext.Current != active)
+                throw new InvalidOperationException("The company session changed. Open Manage users again.");
+            if (remote.MasterAccess.MasterId != _data.MasterAccess.MasterId)
+                throw new InvalidOperationException("This connection contains a different company. Sign in again before managing its users.");
+            MasterAccessService.RequireOwner(remote.MasterAccess, active.Session);
+            var session = MasterAccessService.RefreshSession(remote.MasterAccess, active.Session);
+            using var editor = new MasterUserManagementForm(remote.MasterAccess, session, remote.Clients);
+            if (editor.ShowDialog(this) != DialogResult.OK) return;
+            if (MasterSessionContext.Current != active)
+                throw new InvalidOperationException("The company session changed. No accounts were saved.");
+            if (active.Target == SyncTarget.GoogleDrive)
+                await GoogleDriveSyncService.SaveAccessControlAsync(_data, _store, editor.ResultAccess,
+                    session, initialSetup: false, password: session.MasterKey,
+                    cancellationToken: _lifetimeCancellation.Token, expectedFingerprint: fingerprint,
+                    preserveInventoryBaseline: true);
+            else
+                SharedSyncService.SaveAccessControl(_data, _store, editor.ResultAccess, session,
+                    initialSetup: false, password: session.MasterKey, expectedFingerprint: fingerprint,
+                    preserveInventoryBaseline: true);
+            var refreshed = MasterAccessService.RefreshSession(_data.MasterAccess, session);
+            MasterSessionContext.Set(active.Target, active.MasterKey, refreshed);
+            RefreshAfterLiveDataChange();
+            _statusLabel.Text = "Company users and client access saved";
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "Company users", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            if (gateHeld) _liveCoauthoringGate.Release();
+            _managingAccounts = false;
+            if (!IsDisposed) RefreshMasterSessionUi();
+        }
+    }
+
     private void OpenWorkspaceSync()
     {
         using var sync = CreateWorkspaceSyncForm();
@@ -1637,7 +1715,7 @@ public sealed class MainForm : Form
 
     private async Task RunLiveCoauthoringAsync()
     {
-        if (IsDisposed || _checkoutInProgress ||
+        if (IsDisposed || _checkoutInProgress || _managingAccounts ||
             Application.OpenForms.Cast<Form>().Any(form => form != this && form.Visible))
             return;
         var active = MasterSessionContext.Current;
@@ -1899,6 +1977,13 @@ public sealed class MainForm : Form
         _aboutButton.Visible = true;
         _aboutBackButton.Visible = !signedIn && _aboutPage.Visible;
         _adminPanel.Visible = active is not null && !_masterWelcomePage.Visible;
+        _manageUsersButton.Visible = active?.Session.IsOwner == true;
+        _manageUsersButton.Enabled = !_managingAccounts && !_checkoutInProgress;
+        _adminPanel.Height = _manageUsersButton.Visible ? 114 : 70;
+        _logoutButton.Top = _manageUsersButton.Visible ? 67 : 25;
+        _logoutButton.Enabled = !_managingAccounts;
+        _syncButton.Enabled = !_managingAccounts;
+        _settingsButton.Enabled = !_managingAccounts;
         _signedInLabel.Visible = active is not null;
         UpdateSignedInLabel();
         RefreshWorkspaceCheckoutState();

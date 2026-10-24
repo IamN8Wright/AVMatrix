@@ -99,6 +99,7 @@ internal static class QualityRegression
         RunImportRegression();
         RunCheckoutRecoveryRegression();
         RunSyncNavigationRegression();
+        CompanyUserManagementRegression.Run();
         Console.WriteLine("QC passed: scope rebinding, 169/172 counts, late upload edits, checkout resume, 240 sync cycles, import identity and preview races.");
     }
 

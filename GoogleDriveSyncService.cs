@@ -186,10 +186,16 @@ internal static class GoogleDriveSyncService
         MasterSession? session,
         bool initialSetup,
         string? password,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? expectedFingerprint = null,
+        bool preserveInventoryBaseline = false)
     {
         var remote = await GoogleDriveService.DownloadAsync(data.Settings, cancellationToken);
         var remoteFingerprint = Fingerprint(remote.Contents);
+        if (expectedFingerprint is not null && !string.Equals(expectedFingerprint,
+                remoteFingerprint, StringComparison.OrdinalIgnoreCase))
+            throw new SharedMasterConflictException(
+                "The company file changed while Manage users was open. No accounts were overwritten. Reopen Manage users and try again.");
         var remoteData = PortableDataService.ImportBytes(remote.Contents, password).Data;
         if (initialSetup)
         {
@@ -207,6 +213,8 @@ internal static class GoogleDriveSyncService
                 remoteData.MasterAccess,
                 updatedAccess,
                 session!);
+        if (!initialSetup && session?.IsOwner == true)
+            MasterAccessService.RequireOwner(remoteData.MasterAccess, session);
         MasterAccessService.ValidateForSave(accessToSave);
         remoteData.MasterAccess = accessToSave;
         var masterData = ClientSubmatrixService.MasterMetadataOnly(remoteData);
@@ -227,10 +235,14 @@ internal static class GoogleDriveSyncService
             throw new SharedMasterConflictException(
                 "The Google Drive company file changed immediately after the account update. Refresh before continuing.");
         data.MasterAccess = MasterAccessService.Clone(accessToSave);
-        data.Settings.GoogleDriveFingerprint = savedFingerprint;
-        data.Settings.GoogleDriveRemoteChangesDetected = false;
-        data.Settings.GoogleDriveLastSyncUtc = DateTime.UtcNow;
-        SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, saved.Contents);
+        if (!preserveInventoryBaseline)
+        {
+            data.Settings.GoogleDriveFingerprint = savedFingerprint;
+            data.Settings.GoogleDriveRemoteChangesDetected = false;
+            data.Settings.GoogleDriveLastSyncUtc = DateTime.UtcNow;
+            SyncBaselineStore.Save(store, SyncTarget.GoogleDrive, saved.Contents);
+        }
+        else data.Settings.GoogleDriveRemoteChangesDetected = true;
         store.Save(data);
         return new GoogleDriveSyncResult(
             initialSetup ? "Owner configured" : "Accounts updated",

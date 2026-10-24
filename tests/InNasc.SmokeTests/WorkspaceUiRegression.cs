@@ -18,6 +18,7 @@ internal static class WorkspaceUiRegression
             var client = new ClientRecord { Name = "Providence", Locations = [location] };
             var data = new AppData { Clients = [client], MasterAccess = access };
             DataStore.Normalize(data);
+            VerifyCompanyUserManagement(data, session);
             using var form = new MainForm(data, new DataStore());
             Call(form, "OpenClient", client);
             var tree = Field<TreeView>(form, "_tree");
@@ -290,6 +291,90 @@ internal static class WorkspaceUiRegression
             Assert(googleSync is GoogleDriveSyncForm, "A Google sign-in must route to Google Drive sync.");
             main.Close();
             Console.WriteLine("Windows sync routing QC passed: actual sidebar button click, enabled file check-in, zero-checkout cloud inspection isolation, remembered Google login and Google sync routing.");
+        }
+        finally
+        {
+            MasterSessionContext.Clear();
+            if (previous is not null) MasterSessionContext.Set(previous.Target, previous.MasterKey, previous.Session);
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static void VerifyCompanyUserManagement(AppData source, MasterSession admin)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "InNasc-Company-User-UI-" + Guid.NewGuid().ToString("N"));
+        var previous = MasterSessionContext.Current;
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "Company.nasc");
+            var store = new DataStore(Path.Combine(root, "Workstation"));
+            var remote = new AppData
+            {
+                Clients = source.Clients.Select(ClientSubmatrixService.CloneClient).ToList(),
+                MasterAccess = MasterAccessService.Clone(source.MasterAccess)
+            };
+            remote.Clients.Add(new ClientRecord { Name = "Another client" });
+            PortableDataService.ExportMaster(path, remote, admin);
+            var data = new AppData { Settings = new AppSettings { SharedMasterPath = path } };
+            SharedSyncService.Pull(data, store, admin.MasterKey, admin);
+            MasterSessionContext.Set(SyncTarget.SharedFile, path, admin);
+            using var main = new MainForm(data, store);
+            main.Show();
+            var manage = Field<Button>(main, "_manageUsersButton");
+            Assert(manage.Visible && manage.Enabled, "Admins must see Manage users after company login.");
+            AssertClickableBounds(main, manage);
+            Exception? dialogFailure = null;
+            var opened = false;
+            using var completeEditor = new System.Windows.Forms.Timer { Interval = 50 };
+            completeEditor.Tick += (_, _) =>
+            {
+                var editor = Application.OpenForms.OfType<MasterUserManagementForm>().FirstOrDefault(form => form.Visible);
+                if (editor is null) return;
+                completeEditor.Stop();
+                try
+                {
+                    opened = true;
+                    editor.Size = editor.MinimumSize;
+                    var add = (Button)editor.Controls.Find("CompanyAddUser", true).Single();
+                    var scopes = (Button)editor.Controls.Find("CompanyClientAccess", true).Single();
+                    var save = (Button)editor.Controls.Find("SaveCompanyUsers", true).Single();
+                    AssertClickableBounds(editor, add);
+                    AssertClickableBounds(editor, scopes);
+                    AssertClickableBounds(editor, save);
+                    var account = MasterAccessService.AddUser(editor.ResultAccess, admin, "ui-employee", "UI Employee",
+                        "UI-Employee-pass-537", MasterUserRole.Tech);
+                    MasterAccessService.UpdateClientAccess(editor.ResultAccess, admin, account.Id, false, [data.Clients[0].Id]);
+                    using var roleEditor = new MasterUserEditorForm();
+                    var roles = SyncField<ComboBox>(roleEditor, "_role");
+                    Assert(roles.GetItemText(MasterUserRole.Owner) == "Admin" &&
+                        roles.GetItemText(MasterUserRole.Tech) == "User", "Company role labels must be Admin and User.");
+                    save.PerformClick();
+                }
+                catch (Exception exception)
+                {
+                    dialogFailure = exception;
+                    editor.DialogResult = DialogResult.Cancel;
+                    editor.Close();
+                }
+            };
+            completeEditor.Start();
+            manage.PerformClick();
+            completeEditor.Stop();
+            if (dialogFailure is not null) throw dialogFailure;
+            Assert(opened, "Clicking Manage users must open the company account editor.");
+            var saved = SharedSyncService.Inspect(path, admin.MasterKey);
+            var employee = MasterAccessService.SignIn(saved.Contents.Data.MasterAccess, "ui-employee", "UI-Employee-pass-537");
+            Assert(saved.Contents.Data.MasterAccess.Users.Single(user => user.Id == employee.UserId)
+                .ClientAccessIds.SequenceEqual([data.Clients[0].Id]), "Save users did not publish selected-client permissions.");
+            MasterSessionContext.Set(SyncTarget.SharedFile, path, employee);
+            Assert(!manage.Visible, "Regular users must not see the administrative user editor.");
+            using var welcome = new ClientWelcomeControl(data);
+            var visibleClient = typeof(ClientWelcomeControl).GetMethod("CanViewClient", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert((bool)visibleClient.Invoke(welcome, [data.Clients[0]])! &&
+                !(bool)visibleClient.Invoke(welcome, [data.Clients[1]])!, "The client picker must enforce selected-client access.");
+            main.Close();
+            Console.WriteLine("Windows company user UI QC passed: actual Manage users click and Save users action, admin-only visibility, unclipped controls, Admin/User labels, published login and client picker restrictions.");
         }
         finally
         {
